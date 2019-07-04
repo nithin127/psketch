@@ -1,0 +1,110 @@
+OpenAI SpinningUp
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Exploration Papers
+
+
+	Intrinsic Motivation:
+
+	- VIME: Variational Information Maximizing Exploration, Houthooft et al, 2016. Algorithm: VIME.
+	- Unifying Count-Based Exploration and Intrinsic Motivation, Bellemare et al, 2016. Algorithm: CTS-based Pseudocounts.
+	- EX2: Exploration with Exemplar Models for Deep Reinforcement Learning, Fu et al, 2017. Algorithm: EX2.
+	- Curiosity-driven Exploration by Self-supervised Prediction, Pathak et al, 2017. Algorithm: Intrinsic Curiosity Module (ICM).
+	- Large-Scale Study of Curiosity-Driven Learning, Burda et al, 2018. Contribution: Systematic analysis of how surprisal-based intrinsic motivation performs in a wide variety of environments.
+
+
+	Unsupervised RL:
+
+	- Variational Intrinsic Control, Gregor et al, 2016. Algorithm: VIC.
+	- Diversity is All You Need: Learning Skills without a Reward Function, Eysenbach et al, 2018. Algorithm: DIAYN.
+	- Variational Option Discovery Algorithms, Achiam et al, 2018. Algorithm: VALOR.
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Transfer and Multitask RL
+
+
+	- Universal Value Function Approximators, Schaul et al, 2015. Algorithm: UVFA.
+	- Reinforcement Learning with Unsupervised Auxiliary Tasks, Jaderberg et al, 2016. Algorithm: UNREAL.
+	- Learning an Embedding Space for Transferable Robot Skills, Hausman et al, 2018.
+	- Mutual Alignment Transfer Learning, Wulfmeier et al, 2017. Algorithm: MATL.
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Hierarchical RL
+
+
+	- FeUdal Networks for Hierarchical Reinforcement Learning, Vezhnevets et al, 2017. Algorithm: Feudal Networks
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Memory (This is obviously important. But not very directly)
+
+	- Model-Free Episodic Control, Blundell et al, 2016. Algorithm: MFEC.
+	- Neural Episodic Control, Pritzel et al, 2017. Algorithm: NEC.
+	- (seems imp) Neural Map: Structured Memory for Deep Reinforcement Learning, Parisotto and Salakhutdinov, 2017. Algorithm: Neural Map.
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+Model Based RL
+
+
+	Model is learned
+
+	- Imagination-Augmented Agents for Deep Reinforcement Learning, Weber et al, 2017. Algorithm: I2A.
+	- Neural Network Dynamics for Model-Based Deep Reinforcement Learning with Model-Free Fine-Tuning, Nagabandi et al, 2017. Algorithm: MBMF.
+	- Model-Based Reinforcement Learning via Meta-Policy Optimization, Clavera et al, 2018. Algorithm: MB-MPO.
+	- Recurrent World Models Facilitate Policy Evolution, Ha and Schmidhuber, 2018.
+
+
+	Model is given
+
+	- Thinking Fast and Slow with Deep Learning and Tree Search, Anthony et al, 2017. Algorithm: ExIt.
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Meta RL
+
+
+	- RL^2: Fast Reinforcement Learning via Slow Reinforcement Learning, Duan et al, 2016. Algorithm: RL^2.
+	- Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks, Finn et al, 2017. Algorithm: MAML.
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Imitation Learning and Inverse Reinforcement Learning
+
+
+	- Modeling Purposeful Adaptive Behavior with the Principle of Maximum Causal Entropy, Ziebart 2010. Contributions: Crisp formulation of maximum entropy IRL.
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

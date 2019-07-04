@@ -1,0 +1,72 @@
+"make[plank]":
+  ["get_wood", "make0"]
+
+"make[stick]":
+  ["get_wood", "make1"]
+
+"make[cloth]":
+  ["get_grass", "make2"]
+
+"make[rope]":
+  ["get_grass", "make0"]
+
+"make[bridge]":
+  ["get_iron", "get_wood", "make2"]
+
+"make[bed]":
+  ["get_wood", "make0", "get_grass", "make1"]
+
+"make[axe]":
+  ["get_wood", "make1", "get_iron", "make0"]
+
+"make[shears]":
+  ["get_wood", "make1", "get_iron", "make1"]
+
+"get[gold]":
+  ["get_iron", "get_wood", "make2", "get_gold"]
+
+"get[gem]":
+  ["get_wood", "make1", "get_iron", "make0", "get_gem"]
+
+
+### Subtask index ###
+# 1: _make
+# 2: wood
+# 3: make0
+# 4: make1
+# 5: grass
+# 6: make2
+# 7: iron
+# 8: _get
+# 9: gold
+# 10: gem
+
+
+# Cookbook; n_kinds
+#0 free
+#1 boundary
+#2 workshop0
+#3 workshop1
+#4 workshop2
+#5 water
+#6 stone
+
+
+#7 iron
+#8 grass
+#9 wood
+#10 gold
+#11 gem
+
+
+#12 plank
+#13 stick
+#14 axe
+#15 rope
+#16 bed
+#17 shears
+#18 cloth
+#19 bridge
+#20 ladder
+
+
