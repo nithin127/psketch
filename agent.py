@@ -177,13 +177,67 @@ class Agent_Level_4():
 	def __init__(self):
 		# Level 3: Agent can see the basic environment usables and workshops distinctly
 		# Agent has a sense of direction, and a basic sense of inventory
+		self.current_state_sequence = []
+		self.current_segmentation_array = []
+		self.current_prediction_array = []
+		self.events = []
 		self.inventory = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
-		self.level_0_discriminators = [ self.basic_discriminator ]
-		self.level_1_discriminators = [ self.navigation_discriminator ]
-		self.level_2_discriminators = [ self.use_object_discriminator ]
+		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
 		# We need a way to ensure that use_object_discriminator is lower priority than the others
+
+
+	def reinitialise_current_arrays(self):
+		self.current_state_sequence = []
+		self.current_segmentation_array = []
+		self.current_prediction_array = []
+
+
+	def restart(self):
+		self.current_state_sequence = []
+		self.current_segmentation_array = []
+		self.current_prediction_array = []
+		self.events = []
+
+
+	def next_state(self, state):
+		self.current_state_sequence.append(state)
+		self.predict()
 		
+
+	def predict(self):
+		preds = []
+		segs = []
+		for disc in self.discriminators:
+			seg, pred = disc(self.current_state_sequence)
+			preds.append(pred)			
+			segs.append(seg)			
+		if (segs.sum() == 0):
+			# reinitialise and store concept triggers
+			for segs_i in self.current_segmentation_array:
+				ind = segs_i.index(1)
+				if ind:
+					# Give this to concept function and reinitialise
+					self.describe_events(ind)
+					self.reinitialise_current_arrays()
+		else:
+			self.current_segmentation_array.append(segs)
+			self.current_prediction_array.append(preds)	
+
+
+	def describe_events(self, ind):
+		params = []
+		inventory = self.inventory
+		params.append([0, inventory.copy()])
+		for param in prev_params:
+			if param[1] == 2:
+				use_object = param[-1][0][0]
+				prev_inventory = inventory.copy()
+				inventory = inventory_change(inventory, use_object)
+				print_event(inventory, prev_inventory)
+				params.append([param[0], inventory.copy()])
+		return params
+
 
 	def observation_function(self, s):
 		# Agent Direction, distinct usables, distinct workshops
@@ -214,25 +268,6 @@ class Agent_Level_4():
 		final_s[np.where(s[:,:,11] == 1)] = 1
 		final_s[np.where(s[:,:,11] == -1)] += -0.5
 		return final_s
-
-
-	def basic_discriminator(self, demo_model):
-		if not len(demo_model) == 2:
-			return (0, None)
-		demo_model = [ self.observation_function(s) for s in demo_model ]
-		start_state = np.where(demo_model[0]==1)
-		end_state = np.where(demo_model[-1]==1)
-		direction = get_direction(start_state, end_state)
-		if not direction == None:
-			return (1, direction)
-		else:
-			possibilities = []
-			use, movt, _ = use_or_movement(demo_model[0], demo_model[-1], self.inventory)
-			if movt:
-				possibilities.append(movt)
-			if use:
-				possibilities.append((4, use))
-			return (1, possibilities)
 
 
 	def navigation(self, world, start, goal, free_space_id = 0, agent_id = 1, obstacle_id = 2):
@@ -327,59 +362,17 @@ class Agent_Level_4():
 		return (0, (None, None))
 
 
-	def skill_predict(self, demo):
-		params = []
-		start_id = 0
-		while start_id < len(demo) - 1:
-			all_zero = False
-			prediction_array = []
-			segmentation_array = []
-			end_id = start_id + 1
-			while not all_zero:
-				end_id += 1
-				seg0, pred0 = self.level_0_discriminators[0](demo[start_id:end_id])
-				seg1, pred1 = self.level_1_discriminators[0](demo[start_id:end_id])
-				seg2, pred2 = self.level_2_discriminators[0](demo[start_id:end_id])
-				all_zero = (seg0 + seg1 + seg2 == 0)
-				segmentation_array.append([seg0, seg1, seg2])
-				prediction_array.append([pred0, pred1, pred2])
-				if end_id >= len(demo):
-					break
-			# Getting the position where we had a firm prediction
-			ind = end_id - start_id - 1
-			while True:
-				ind -= 1
-				if segmentation_array[ind].count(1) > 0:
-					break
-			start_id = start_id + ind + 1
-			# Get the prediction from the lowest level possible
-			level_id = segmentation_array[ind].index(1)
-			params.append([start_id, level_id, prediction_array[ind][level_id]])
-			print("Segmented at: {}, skill level:{}, parameters: {}".\
-				format(start_id, level_id, prediction_array[ind][level_id]))
-		return params
-
-
-	def describe_events(self, prev_params):
-		params = []
-		inventory = self.inventory
-		params.append([0, inventory.copy()])
-		for param in prev_params:
-			if param[1] == 2:
-				use_object = param[-1][0][0]
-				prev_inventory = inventory.copy()
-				inventory = inventory_change(inventory, use_object)
-				print_event(inventory, prev_inventory)
-				params.append([param[0], inventory.copy()])
-		return params
-
-
 def main():
 	# Let's import a map and see
 	demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
+	demo_model = [ fullstate(s) for s in demos[0][0] ]
+	# Initialise agent
 	agent = Agent_Level_4()
+	agent.restart()
+	# Pass the demonstration "online"
+	for state in demo_model:
+		agent.next_state(state)
 	# Convert into agent readable format
-	demo_model = [fullstate(s) for s in demos[0][0]]
 	basic_prediction = agent.skill_predict(demo_model)
 	abstract_predict = agent.describe_events(basic_prediction)
 

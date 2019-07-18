@@ -1,113 +1,59 @@
-import numpy as np
-from segmentation_agent_pos import predict_sequence
+from agent_level_4 import *
+from create_dataset import fullstate
 
-# ------
+# --------------------------------------- Rule Book ----------------------------------------- #
 
+class RuleBook():
+	def __init__(self, agent):
+		self.agent = agent
+		self.inventory = {"wood": 0, "iron": 0, "grass": 0, "complex": 0}
+		self.state_conditions = [ self.in_front, self.inventory]
+		self.action_conditions = [ self.use]
+		self.rules = [({0: 8}, {0: True}, {0: 0}), ({0: 3}, {0: True}, {0: 3})]
+		# Rule 1: Using wood makes it disappear
+		# Rule 2: Using workshop does not make it disappear
 
-import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument('--phase-1', default=False, action="store_true")
-parser.add_argument('--phase-2', default=False, action="store_true")
-parser.add_argument('--phase-3', default=False, action="store_true")
-parser.add_argument('--phase-4', default=False, action="store_true")
-parser.add_argument('--all-phases', default=False, action="store_true")
-args = parser.parse_args()
+	def use(self, action):
+		if action == 4:
+			return True
+		else:
+			return False
 
+	def in_front(self, state):
+		import ipdb; ipdb.set_trace()
+		lx, ly = np.where(state[:,:,11] == -1)
+		object_in_front = np.where(state[lx,ly] == 1)
+		if object_in_front[0]:
+			return object_in_front[0]
+		else:
+			return 0
 
-# ------
-
-
-# The solution sketch for demos
-key2sketch = { 0: [1,4], 1: [1,5], 2: [3,6], 3: [3,4], 4: [2,1,6], 5: [1,4,3,5], \
-				   6: [1,5,2,4], 7: [1,5,2,5], 8: [2,1,6,7], 9: [1,5,2,4,8] }
-
-import pickle
-demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
-maps = pickle.load(open("../data_psketch/maps.pk", "rb"))
-
-
-# ------
-
-
-def test(demos, key):
-	correct = 0
-	incorrect = 0
-	for demo in demos[key]:
-		try:
-			Q, seg = predict_sequence(demo)
-			if Q == key2sketch[key]: 
-				correct+=1
-			else:
-				incorrect+=1
-		except Exception as e:
-			print("Exception occurred: {}".format(e))
-			incorrect+=1
-	return correct/(correct+incorrect)
+	def event_predict(self, demo_model, basic_predict):
+		rule_array = np.zero((len(demo_model), len(self.rules)))
+		for state in demo_model:
+			for ir, rule in enumerate(self.rules):
+				rule[0].keys()
+		return None
 
 
-def reproduce_demo(demo):
-	# Determine the correct map for failure case
-	map_demo = maps[19][20]
-	# Determine the sketch, where the demo is failing
-	sketch, _ = predict_sequence(demo)
-	return map_demo, sketch
+grid2num = {}
+string_num_dict = { "w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
+num_string_dict = { 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
 
-
-# ------
+# --------------------------------------- Main Function ------------------------------------- #
 
 
 def main():
+	demo = pickle.load(open("wood_two_demo.pk", "rb"))
+	agent = Agent_Level_4()
+	rule_book = RuleBook(agent)
+	# Convert into agent readable format
+	demo_model = [ fullstate(s) for s in demo ]
+	skill_prediction = agent.skill_predict(demo_model)
+	event_prediction = rule_book.event_predict(demo_model, skill_prediction)
 
-	# Phase 1: Unconscious incompetence
-	if args.phase_1 or args.all_phases:
-		print("Starting phase 1")
-		# Check for performance and failure cases
-		for key in demos.keys():
-			try:
-				accuracy = test(demos, key)
-				if accuracy > 0.9:
-					print("Success for key {}. Accuracy {}".format(key, accuracy))
-				else:
-					print("Failure for key {}. Accuracy {}".format(key, accuracy))
-			except:
-				print("Couldn't perform for key {}".format(key))
-				
-
-	# Phase 2: Conscious incompetence
-	if args.phase_2 or args.all_phases:
-		print("Starting phase 2")
-		# Choose the correct failure case to tackle
-		demo = demos[9][936]
-		# Understand to reproduce it
-		failure_specifications = reproduce_demo(demo)
-		map_demo, sketch = failure_specifications
-		# Here although we already pick the demo to be tested, 
-		# this is supposed to be a part of a full process, where
-		# we examine all the failure cases, and pick one thing to work on
-
-
-	# Phase 3
-	if args.phase_3 or args.all_phases:
-		# You picked the next challenge to tackle
-		# Find out environment specifications and action sequences that 
-		# lead to this behaviour
-		# And when it doesn't
-		demo = demos[9][936]
-		map_demo = maps[19][20]
-		sketch = [1, 5, 2, 4, 8, (0,6)]
-		import ipdb; ipdb.set_trace()
-
-
-	# Phase 4
-	if args.phase_4 or args.all_phases:
-		pass
-		# Learn the concept of inventory
-		# Learn the correlation, fit all the new "rules" in to this model
-		# Find out that this smoothly works with all the examples
-		# Occam's razor method. Except you need to find the right framework so that this works
-
+	import ipdb; ipdb.set_trace()
 
 
 if __name__ == "__main__":
 	main()
-
