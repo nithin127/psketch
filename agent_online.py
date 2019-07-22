@@ -184,6 +184,7 @@ class Agent_Level_4():
 		self.inventory = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
+		self.concept_function = [ self.object_in_front, self.inventory ]
 		# We need a way to ensure that use_object_discriminator is lower priority than the others
 
 
@@ -208,35 +209,46 @@ class Agent_Level_4():
 	def predict(self):
 		preds = []
 		segs = []
-		for disc in self.discriminators:
+		for i, disc in enumerate(self.discriminators):
 			seg, pred = disc(self.current_state_sequence)
 			preds.append(pred)			
 			segs.append(seg)			
-		if (segs.sum() == 0):
+		print("Segs: {}, Preds:{}".format(segs, preds))
+		if (sum(segs) == 0):
 			# reinitialise and store concept triggers
-			for segs_i in self.current_segmentation_array:
-				ind = segs_i.index(1)
-				if ind:
+			for segs_i, preds_i in zip(self.current_segmentation_array[::-1], self.current_prediction_array[::-1]):
+				if 1 in segs_i:
+					ind = segs_i.index(1)
+					# Ind is a concept trigger
 					# Give this to concept function and reinitialise
-					self.describe_events(ind)
+					self.describe_actions(ind, preds_i)
 					self.reinitialise_current_arrays()
 		else:
 			self.current_segmentation_array.append(segs)
 			self.current_prediction_array.append(preds)	
 
 
-	def describe_events(self, ind):
-		params = []
-		inventory = self.inventory
-		params.append([0, inventory.copy()])
-		for param in prev_params:
-			if param[1] == 2:
-				use_object = param[-1][0][0]
-				prev_inventory = inventory.copy()
-				inventory = inventory_change(inventory, use_object)
-				print_event(inventory, prev_inventory)
-				params.append([param[0], inventory.copy()])
-		return params
+	def describe_actions(self, ind, pred):
+		if ind == 0:
+			print("Go to: {}".format(pred))
+		elif ind == 1:
+			print("Use object at: {}".format(pred[1]))
+		# Instead of appending state_sequence, append the result of the concept function
+		self.events.append((ind, self.current_state_sequence[-2:]))
+
+
+	def what_happened(self):
+		# If there are still some unpredicted actions, predict them first
+		segs_i, preds_i = self.current_segmentation_array[-1], self.current_prediction_array[-1]
+		if 1 in segs_i:
+			ind = segs_i.index(1)
+			self.describe_actions(ind, preds_i)
+			self.reinitialise_current_arrays()
+		else:
+			print("None of the skills have been completely executed")
+		import ipdb; ipdb.set_trace()
+		self.restart()
+		return None
 
 
 	def observation_function(self, s):
@@ -307,6 +319,8 @@ class Agent_Level_4():
 
 
 	def navigation_discriminator(self, demo_model):
+		if len(demo_model) < 2:
+			return (0.5, None)
 		world_level_1 = self.observation_function(demo_model[0])
 		start_state = np.where(world_level_1==1)
 		end_state = np.where(self.observation_function(demo_model[-1])==1)
@@ -344,6 +358,8 @@ class Agent_Level_4():
 	def use_object_discriminator(self, demo_model):
 		# This function is not perfect, we need to incorporate the change in direction
 		# that is possible between the penultimate and the pen-penultimate object
+		if len(demo_model) < 2:
+			return (0.5, None)
 		end_world = self.observation_function(demo_model[-1])
 		penultimate_world = self.observation_function(demo_model[-2])
 		end_state = np.where(end_world == 1)
@@ -362,6 +378,12 @@ class Agent_Level_4():
 		return (0, (None, None))
 
 
+	def object_in_front(self, state):
+		state_obs = self.observation_function(state)
+		final_direction = np.where((state_obs + 0.5) % 1 == 0)
+		return state_obs[final_direction] + 0.5
+
+
 def main():
 	# Let's import a map and see
 	demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
@@ -372,9 +394,7 @@ def main():
 	# Pass the demonstration "online"
 	for state in demo_model:
 		agent.next_state(state)
-	# Convert into agent readable format
-	basic_prediction = agent.skill_predict(demo_model)
-	abstract_predict = agent.describe_events(basic_prediction)
+	agent.what_happened()
 
 
 if __name__ == "__main__":
