@@ -43,60 +43,7 @@ def get_prev(pos, dirc):
 		return (pos[0] - 1, pos[1])
 
 
-def get_direction(start_state, end_state):
-	dx = end_state[0] - start_state[0]
-	dy = end_state[1] - start_state[1]
-	if not dx == 0:
-		if dx == -1:
-			return LEFT
-		else:
-			return RIGHT
-	elif not dy == 0:
-		if dy == -1:
-			return DOWN
-		else:
-			return UP
-	else:
-		return None
-
-
-def use_or_movement(world_start, world_end):
-	use = None
-	movement = None
-	start_state = np.where(world_start==1)
-	end_state = np.where(world_end==1)	
-	start_view = np.where((world_start + 0.5) % 1 == 0)
-	end_view = np.where((world_end + 0.5) % 1 == 0)
-	if start_view == end_view:
-		object_in_front_start = world_start[start_view]
-		object_in_front_end = world_end[end_view]
-		# Now find out if a usable object was used
-		if object_in_front_end == object_in_front_start:
-			if object_in_front_start == -0.5:
-				use = 0
-			elif (object_in_front_start > 1) and (object_in_front_start < 5):
-				# Covering the possible change in the inventory
-				use = object_in_front_start + 0.5
-				movement = get_direction(end_state, end_view)
-			elif (object_in_front_start > 5) and (object_in_front_start < 8):
-				movement = get_direction(end_state, end_view)
-			elif (object_in_front_start > 8) and (object_in_front_start < 10):
-				movement = get_direction(end_state, end_view)
-				if (object_in_front_start == 8.5) and (inventory["bridge"] == 0):
-					use = object_in_front_start + 0.5
-				if (object_in_front_start == 9.5) and (inventory["axe"] == 0):
-					use = object_in_front_start + 0.5
-			elif (object_in_front_start > 10) and (object_in_front_start < 12):
-				movement = get_direction(end_state, end_view)
-		else:
-			# Covering the change in the inventory
-			use = object_in_front_start + 0.5
-	else:
-		movement = get_direction(end_state, end_view)
-	return use, movement
-
-
-def inventory_change(inventory, action):
+def rule_book(inventory, action):
 	if action == 3:
 		num_wood = inventory["wood"]
 		num_iron_stick = min(inventory["iron"], inventory["stick"])
@@ -154,19 +101,6 @@ string_num_dict = { "w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8,
 num_string_dict = { 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
 
 
-def print_event(inventory, prev_inventory):
-	Used = []
-	Created = []
-	for key in inventory.keys():
-		change = inventory[key] - prev_inventory[key]
-		if change > 0:
-			Created.append((change, key))
-		elif change < 0:
-			Used.append((-change, key))
-	if len(Used) + len(Created) > 0:
-		print("{} was used to create {}".format(Used, Created))
-
-
 # --------------------------------------- Agent Function -------------------------------------- #
 
 
@@ -177,11 +111,12 @@ class Agent():
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
-		self.concept_functions = [ self.object_in_front]
+		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after), \
+									("use_condition", self.use_condition) ]
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
-		self.current_inventory = [(1, self.inventory_format.copy())]
+		self.current_inventory_probability = [(1, self.inventory_format.copy())]
 		self.events = []
 		# We need a way to ensure that use_object_discriminator is lower priority than the others
 
@@ -232,10 +167,10 @@ class Agent():
 		elif ind == 1:
 			print("Use object {} at {}".format(pred[1][0], pred[1][1]))
 		# Instead of appending state_sequence, append the result of the concept function
-		concepts = []
-		for i, c_func in enumerate(self.concept_functions):
-			concepts.append((i, c_func(self.current_state_sequence[-2:])))
-		self.events.append((ind, concepts))
+		concepts = {"trigger": ind}
+		for key, c_func in self.concept_functions:
+			concepts[key] = c_func(self.current_state_sequence[-2:])
+		self.events.append(concepts)
 
 
 	def what_happened(self):
@@ -245,12 +180,13 @@ class Agent():
 			if 1 in segs_i:
 				ind = segs_i.index(1)
 				self.describe_actions(ind, preds_i)
-				self.reinitialise_current_arrays()
 			else:
 				print("None of the skills have been completely executed")
 		else:
 			pass
-		for event in self.events:
+		self.reinitialise_current_arrays()
+		# Now let's see what happened in events
+		for ie, event in enumerate(self.events):
 			trigger, concepts = event
 			# In our case, there is just one concept function, and we don't make use of the event trigger
 			concept_num, concept_dict = concepts[0]
@@ -262,10 +198,12 @@ class Agent():
 					# Change the inventory: split probablities
 					# If it is a usable object then only Movement
 					pass
-				else:
-					if concept_dict["object"][1][1] == 0:
+				elif concept_dict["object"][1][1] == 0:
 						print("Picked up object {}".format(concept_dict["object"][1][0]))
 						# Change the inventory
+				else:
+					print("Created object {} from {}".format(concept_dict["object"][1][1], concept_dict["object"][1][0]))
+
 			else:
 				print("Changed direction to: {}".format(concept_dict["direction"][1][1]))
 		self.restart()
@@ -305,7 +243,7 @@ class Agent():
 
 
 	def navigation(self, world, start, goal, free_space_id = 0, agent_id = 1, obstacle_id = 2):
-		# Treat everything else as obstacles: observation level 0
+		# Treat everything else as obstacles, no direction: observation level 0
 		world = np.clip(world, 0, 2)
 		# Check if the request is valid
 		if (goal == start) or (world[goal] == obstacle_id):
@@ -354,68 +292,116 @@ class Agent():
 
 
 	def use_object(self, world, start, goal, obstacle_id = 2):
-		# Change the way we want to see the world (this is one of limiting factors of this function)
+		# This function is not really needed, but is for reference. And maybe we'll use it later
+		# Treat everything else as obstacles, no direction: observation level 0,
 		world = np.clip(world, 0, 2)
-		# First pick a position next to the object
-		neighbors = find_neighbors(goal)
-		available_neighbors = []
-		for nx, ny, _ in neighbors:
-			if not world[nx, ny] == obstacle_id:
-				available_neighbors.append((nx,ny))
-		if len(available_neighbors) == 0:
-			print("No neighbours available")
-			return []
+		# Dijsktra logic -- starts here, importance on the final direction
+		cost_map = np.inf*np.ones(world.shape)
+		dir_map = np.zeros(world.shape)
+		to_visit = []
+		# Deciding pre-goals
+		for nx, ny, d in find_neighbors(goal, None):
+			if (world[nx, ny] == obstacle_id):
+				continue
+			cost_map[nx, ny] = 0
+			dir_map[nx, ny] = d
+			for nxx, nyy, dd in find_neighbors([nx, ny], None):
+				if not (cost_map[nxx, nyy] == np.inf) or world[nxx, nyy] == obstacle_id:
+					continue
+				else:
+					if dd == d:
+						cost_map[nxx, nyy] = 1
+					else:
+						cost_map[nxx, nyy] = 2
+					to_visit.append((nxx, nyy))
+					dir_map[nxx, nyy] = dd
+		# Meat of the algorithm
+		while len(to_visit) > 0:
+			curr = to_visit.pop(0)
+			for nx, ny, d in find_neighbors(curr, None):
+				if world[nx, ny] == obstacle_id:
+					continue
+				cost = cost_map[curr[0],curr[1]] + 1
+				if cost < cost_map[nx,ny]:
+					cost_map[nx,ny] = cost
+					to_visit.append((nx, ny))
+					dir_map[nx,ny] = d
+		seq = []
+		curr = start
+		while not (curr == goal):
+			d = dir_map[curr[0],curr[1]]
+			curr = get_prev(curr, d)
+			if d == UP:
+				seq.append(DOWN)
+			elif d == DOWN:
+				seq.append(UP)
+			elif d == RIGHT:
+				seq.append(LEFT)
+			elif d == LEFT:
+				seq.append(RIGHT)
+		if seq[-1] == seq[-2]:
+			return seq[:-1] + [4]
 		else:
-			navigation_goal = available_neighbors[0]
-		# Go to the position
-		seq = self.navigation(world, start, navigation_goal)
-		# Check direction, append use and return the sequence
-		required_direction = get_direction(navigation_goal, goal)
-		if required_direction == seq[-1]:
 			return seq + [4]
-		else:
-			return seq + [required_direction] + [4]
 
 
 	def use_object_discriminator(self, demo_model):
-		# This function is not perfect, we need to incorporate the change in direction
-		# that is possible between the penultimate and the pen-penultimate object
 		if len(demo_model) < 2:
 			return (0.5, None)
-		end_world = self.observation_function(demo_model[-1])
+		# Start state
+		start_world = self.observation_function(demo_model[0])
+		start_state = np.where(start_world==1)
+		# Last state
+		ultimate_world = self.observation_function(demo_model[-1])
+		ultimate_state = np.where(ultimate_world == 1)
+		ultimate_direction = np.where((ultimate_world +0.5) % 1 == 0)
+		# Second last state
 		penultimate_world = self.observation_function(demo_model[-2])
-		end_state = np.where(end_world == 1)
 		penultimate_state = np.where(penultimate_world == 1)
-		final_direction = np.where((end_world +0.5) % 1 == 0)
-		if end_state == penultimate_state:
-			use, _ = use_or_movement(penultimate_world, end_world)
-			if use:
-				result, _ = self.navigation_discriminator(demo_model[:-1])
-				if result == 1:
-					return (1, (use, final_direction))
+		penultimate_direction = np.where((penultimate_world +0.5) % 1 == 0)
+		# Checking conditions and outputting results
+		if ultimate_state == penultimate_state:
+			actions = self.use_object(start_world, start_state, ultimate_direction)
+			if ultimate_direction == penultimate_direction:
+				if len(actions) >= len(demo_model) - 1:
+					return (1, ultimate_direction)
+			else:
+				if len(actions) >= len(demo_model) - 1:
+					return (0.5, ultimate_direction)
+				else:
+					return (0, None)
 		else:
-			result, _ = self.navigation_discriminator(demo_model)
-			if result == 1:
-				return (0.5, (None, None))
-		return (0, (None, None))
+			actions = self.navigation(start_world, start_state, ultimate_state)
+			if len(actions) >= len(demos):
+				return (0.5, None)
+			else:
+				return (0, None)		
 
 
-	def object_in_front(self, states):
+	def object_in_front_before(self, states):
 		state_obs1 = self.observation_function(states[0])
 		direction1 = np.where((state_obs1 + 0.5) % 1 == 0)
+		return state_obs1[direction1] + 0.5
+
+
+	def object_in_front_after(self, states):
 		state_obs2 = self.observation_function(states[1])
 		direction2 = np.where((state_obs2 + 0.5) % 1 == 0)
-		init_obj = state_obs1[direction1] + 0.5
-		fin_obj = state_obs2[direction2] + 0.5	
-		if direction2 == direction1:
-			c1 = ("same", direction2)
+		return state_obs2[direction2] + 0.5
+
+
+	def use_condition(self, states):
+		state_obs1 = self.observation_function(states[0])
+		position1 = np.where(state_obs1 == 1)
+		direction1 = np.where((state_obs1 + 0.5) % 1 == 0)
+		state_obs2 = self.observation_function(states[1])
+		position2 = np.where(state_obs2 == 1)
+		direction2 = np.where((state_obs2 + 0.5) % 1 == 0)
+		if (direction1 == direction2) and (position1 == position2):
+			return True
 		else:
-			c1 = ("different", (direction1, direction2))
-		if init_obj == fin_obj:
-			c2 = ("same", fin_obj)
-		else:
-			c2 = ("different", (init_obj, fin_obj))
-		return {"direction": c1, "object": c2}
+			return 0
+
 
 
 def main():
