@@ -44,27 +44,54 @@ def get_prev(pos, dirc):
 
 # ----------------------------------------- Rule Book ----------------------------------------- #
 
+
 class RuleBook():
 	def __init__(self):
 		self.rule_structure = {"object_before": None, "inventory_before": None, "object_after": None, "inventory_after": None}
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		self.rule_list = [
-			{"object_before": 8, "inventory_before": None, "object_after": 0, "inventory_after": None},
-			{"object_before": 3, "inventory_before": None, "object_after": 3, "inventory_after": None},
-			{"object_before": 7, "inventory_before": None, "object_after": 0, "inventory_after": None},
+			{"object_before": 8, "inventory_before": None, "object_after": 0, "inventory_after": None, "text": "Got wood"},
+			{"object_before": 3, "inventory_before": None, "object_after": 3, "inventory_after": None, "text": "Used w0"},
+			{"object_before": 7, "inventory_before": None, "object_after": 0, "inventory_after": None, "text": "Got grass"},
 			{"object_before": 4, "inventory_before": self.inventory_format.copy(), "object_after": 4, \
-				"inventory_after": self.inventory_format.copy()},
+				"inventory_after": self.inventory_format.copy(), "text": "Made stick at w1"},
 		]
 		self.rule_list[-1]["inventory_before"]["wood"] += 1
 		self.rule_list[-1]["inventory_after"]["stick"] += 1
 
-	def concept_book(self, event):
+
+	def rule_number(self, event, agent_inventory_before):
+		# We're assuming no two rules satisfy the same criteria, for now
+		# Also, no complications with multiple objects in the inventories, we'll see as we go
+		for rule_num, rule in enumerate(rule_list):
+			if (rule["object_before"] == event["object_before"]) and (rule["object_after"] == event["object_after"]):
+				if rule["inventory_before"]:
+					if rule["inventory_before"] == agent_inventory_before:
+						agent_inventory_before = rule["inventory_after"]
+						return rule_num, rule["text"]
+					else:
+						pass
+				else:
+					return rule_num, rule["text"]
+			else:
+				pass
+		return None, None
+
+
+string_num_dict = { "free: 0, ""w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
+num_string_dict = { 0: "free", 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
+
+
+class Environments():
+	def __init__(self):
+		# We define the set of environments here
+		# With objects defined inside
 		pass
 
+	def add_environment(self):
+		pass
 
-string_num_dict = { "w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
-num_string_dict = { 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
 
 
 # --------------------------------------- Agent Function -------------------------------------- #
@@ -77,13 +104,14 @@ class Agent():
 		self.rulebook = rulebook
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
+		# These things can be replaced by neural networks
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
-		# These concept functions can be replaced by neural networks
 		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after) ]
+		# Agent's memory
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
-		self.current_inventory_probability = [(1, self.inventory_format.copy())]
+		self.current_inventory = [ self.inventory_format.copy() ]
 		self.events = []
 
 
@@ -152,9 +180,16 @@ class Agent():
 			pass
 		self.reinitialise_current_arrays()
 		# Now let's see what happened in events
+		print("------------------------")
+		print("Describing events")
+		print("------------------------")
 		for ie, event in enumerate(self.events):
-			if event["trigger"] == 0:
-
+			num, text = self.rulebook.rule_number(event, self.current_inventory)
+			if num:
+				print("Event {}. {}".format(ie, text))
+			else:
+				print("Unrecoginsed event, back to training")
+				# Here we pass the event back to training
 		self.restart()
 		return None
 
