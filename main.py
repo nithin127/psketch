@@ -4,7 +4,7 @@ import numpy as np
 from create_dataset import fullstate
 
 
-# --------------------------------------- Helper Function ------------------------------------- #
+# -------------------------------------- Helper Functions ------------------------------------- #
 
 
 DOWN = 0
@@ -42,59 +42,25 @@ def get_prev(pos, dirc):
 	elif dirc == 3:
 		return (pos[0] - 1, pos[1])
 
+# ----------------------------------------- Rule Book ----------------------------------------- #
 
-def rule_book(inventory, action):
-	if action == 3:
-		num_wood = inventory["wood"]
-		num_iron_stick = min(inventory["iron"], inventory["stick"])
-		num_grass = inventory["grass"]
-		inventory["wood"] -= num_wood
-		inventory["iron"] -= num_iron_stick
-		inventory["stick"] -= num_iron_stick
-		inventory["grass"] -= num_grass
-		inventory["plank"] += num_wood
-		inventory["axe"] += num_iron_stick
-		inventory["rope"] += num_grass
-	elif action == 4:
-		num_wood = inventory["wood"]
-		num_grass_plank = min(inventory["grass"], inventory["plank"])
-		num_iron_stick = min(inventory["iron"], inventory["stick"])
-		inventory["wood"] -= num_wood
-		inventory["grass"] -= num_grass_plank
-		inventory["plank"] -= num_grass_plank
-		inventory["iron"] -= num_iron_stick
-		inventory["stick"] -= num_iron_stick
-		inventory["stick"] += num_wood
-		inventory["bed"] += num_grass_plank
-		inventory["shears"] += num_iron_stick
-	elif action == 5:
-		num_grass = inventory["grass"]
-		num_iron_wood = min(inventory["iron"], inventory["stick"])
-		num_plank_stick = min(inventory["plank"], inventory["stick"])
-		inventory["grass"] -= num_grass
-		inventory["iron"] -= num_iron_wood
-		inventory["wood"] -= num_iron_wood
-		inventory["plank"] -= num_plank_stick
-		inventory["stick"] -= num_plank_stick
-		inventory["cloth"] += num_grass
-		inventory["bridge"] += num_iron_wood
-		inventory["ladder"] += num_plank_stick
-	elif action == 6:
-		inventory["iron"] += 1
-	elif action == 7:
-		inventory["grass"] += 1
-	elif action == 8:
-		inventory["wood"] += 1
-	elif action == 9:
-		if inventory["bridge"] > 0:
-			inventory["bridge"] -= 1
-	elif action == 10:
+class RuleBook():
+	def __init__(self):
+		self.rule_structure = {"object_before": None, "inventory_before": None, "object_after": None, "inventory_after": None}
+		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
+				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
+		self.rule_list = [
+			{"object_before": 8, "inventory_before": None, "object_after": 0, "inventory_after": None},
+			{"object_before": 3, "inventory_before": None, "object_after": 3, "inventory_after": None},
+			{"object_before": 7, "inventory_before": None, "object_after": 0, "inventory_after": None},
+			{"object_before": 4, "inventory_before": self.inventory_format.copy(), "object_after": 4, \
+				"inventory_after": self.inventory_format.copy()},
+		]
+		self.rule_list[-1]["inventory_before"]["wood"] += 1
+		self.rule_list[-1]["inventory_after"]["stick"] += 1
+
+	def concept_book(self, event):
 		pass
-	elif action == 11:
-		inventory["gold"] += 1
-	elif action == 12:
-		inventory["gem"] += 1
-	return inventory
 
 
 string_num_dict = { "w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
@@ -105,20 +71,20 @@ num_string_dict = { 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood",
 
 
 class Agent():
-	def __init__(self):
+	def __init__(self, rulebook):
 		# Level 3: Agent can see the basic environment usables and workshops distinctly
 		# Agent has a sense of direction, and a basic sense of inventory
+		self.rulebook = rulebook
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
-		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after), \
-									("use_condition", self.use_condition) ]
+		# These concept functions can be replaced by neural networks
+		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after) ]
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
 		self.current_inventory_probability = [(1, self.inventory_format.copy())]
 		self.events = []
-		# We need a way to ensure that use_object_discriminator is lower priority than the others
 
 
 	def reinitialise_current_arrays(self):
@@ -187,25 +153,8 @@ class Agent():
 		self.reinitialise_current_arrays()
 		# Now let's see what happened in events
 		for ie, event in enumerate(self.events):
-			trigger, concepts = event
-			# In our case, there is just one concept function, and we don't make use of the event trigger
-			concept_num, concept_dict = concepts[0]
-			import ipdb; ipdb.set_trace()
-			# Let's see what the rule book says
-			if concept_dict["direction"][0] == "same":
-				if concept_dict["object"][0] == "same":
-					# If it is a workshop like object: then either USE or Movement
-					# Change the inventory: split probablities
-					# If it is a usable object then only Movement
-					pass
-				elif concept_dict["object"][1][1] == 0:
-						print("Picked up object {}".format(concept_dict["object"][1][0]))
-						# Change the inventory
-				else:
-					print("Created object {} from {}".format(concept_dict["object"][1][1], concept_dict["object"][1][0]))
+			if event["trigger"] == 0:
 
-			else:
-				print("Changed direction to: {}".format(concept_dict["direction"][1][1]))
 		self.restart()
 		return None
 
@@ -372,7 +321,7 @@ class Agent():
 					return (0, None)
 		else:
 			actions = self.navigation(start_world, start_state, ultimate_state)
-			if len(actions) >= len(demos):
+			if len(actions) >= len(demo_model):
 				return (0.5, None)
 			else:
 				return (0, None)		
@@ -390,17 +339,9 @@ class Agent():
 		return state_obs2[direction2] + 0.5
 
 
-	def use_condition(self, states):
-		state_obs1 = self.observation_function(states[0])
-		position1 = np.where(state_obs1 == 1)
-		direction1 = np.where((state_obs1 + 0.5) % 1 == 0)
+	def current_position(self, states):
 		state_obs2 = self.observation_function(states[1])
-		position2 = np.where(state_obs2 == 1)
-		direction2 = np.where((state_obs2 + 0.5) % 1 == 0)
-		if (direction1 == direction2) and (position1 == position2):
-			return True
-		else:
-			return 0
+		return np.where(state_obs2 == 1)
 
 
 
@@ -408,8 +349,9 @@ def main():
 	# Let's import a map and see
 	demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
 	demo_model = [ fullstate(s) for s in demos[0][0] ]
-	# Initialise agent
-	agent = Agent()
+	# Initialise agent and rulebook
+	rulebook = RuleBook()
+	agent = Agent(rulebook)
 	agent.restart()
 	# Pass the demonstration "online"
 	for state in demo_model:
