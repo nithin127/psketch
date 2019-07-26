@@ -43,10 +43,9 @@ def create_map(map_name = "iron_one", num_obstacles_random = 5):
 	pickle.dump(state, open(map_name + ".pk", "wb"))
 	
 
-
 def create_demo(map_name = "iron_one"):	
 	state = pickle.load(open(map_name + ".pk", "rb"))
-	agent = Agent(None)
+	agent = Agent(None, None)
 
 	s0 = fullstate(state)
 	s0_observe = agent.observation_function(s0)
@@ -63,6 +62,10 @@ def create_demo(map_name = "iron_one"):
 	state.render()
 	import ipdb; ipdb.set_trace()
 	pickle.dump(demo, open(map_name + "_demo.pk", "wb"))
+
+
+def create_demo_manual(map_name = "iron_one"):
+	pass
 
 
 if __name__ == "__main__":

@@ -6,11 +6,6 @@ job_log.txt
 spot_requests.log
 run.sh.complete
 .ipynb_checkpoints
-experiments/hrl/events*
 slurm*
-embedding_dataset*
 job.sh
-embedding*.txt
-skill_dict*
-Questions*
 *.pk

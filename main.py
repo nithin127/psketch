@@ -79,7 +79,7 @@ class RuleBook():
 	def rule_number(self, event, agent_inventory_before):
 		# We're assuming no two rules satisfy the same criteria, for now
 		# Also, no complications with multiple objects in the inventories, we'll see as we go
-		for rule_num, rule in enumerate(rule_list):
+		for rule_num, rule in enumerate(self.rule_list):
 			if (rule["object_before"] == event["object_before"]) and (rule["object_after"] == event["object_after"]):
 				if rule["inventory_before"]:
 					if rule["inventory_before"] == agent_inventory_before:
@@ -94,17 +94,26 @@ class RuleBook():
 		return None, None
 
 
+	def add_rule(self):
+		return None
+
+
 string_num_dict = { "free": 0, "w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
 num_string_dict = { 0: "free", 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
 
 
-class Environments():
+class EnvironmentHandler():
 	def __init__(self):
 		# We define the set of environments here
 		# With objects defined inside
 		pass
 
-	def add_environment(self):
+	def train(self, event, prev_events, agent):
+		# Get environment -- similar, different
+		# Replicate the demonstration
+		pass
+
+	def test(self, events, agent):
 		pass
 
 
@@ -113,9 +122,10 @@ class Environments():
 
 
 class Agent():
-	def __init__(self, rulebook):
+	def __init__(self, rulebook, environment_handler):
 		# Level 3: Agent can see the basic environment usables and workshops distinctly
 		# Agent has a sense of direction, and a basic sense of inventory
+		self.environment_handler = environment_handler
 		self.rulebook = rulebook
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
@@ -174,7 +184,7 @@ class Agent():
 		if ind == 0:
 			print("Go to: {}".format(pred))
 		elif ind == 1:
-			print("Use object {} at {}".format(pred[1][0], pred[1][1]))
+			print("Use object at {}".format(pred))
 		# Instead of appending state_sequence, append the result of the concept function
 		concepts = {"trigger": ind}
 		for key, c_func in self.concept_functions:
@@ -204,7 +214,9 @@ class Agent():
 				print("Event {}. {}".format(ie, text))
 			else:
 				print("Unrecoginsed event, back to training")
+				import ipdb; ipdb.set_trace()
 				# Here we pass the event back to training
+				environment_handler.train(event, self.events[:ie], self)
 		self.restart()
 		return None
 
@@ -399,11 +411,12 @@ def main():
 	# Pick a demo
 	#demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
 	#demo_model = [ fullstate(s) for s in demos[0][0] ]
-	demo = pickle.load(open("iron_one.pk", "rb"))
+	demo = pickle.load(open("iron_one_demo.pk", "rb"))
 	demo_model = [ fullstate(s) for s in demo ]
 	# Initialise agent and rulebook
 	rulebook = RuleBook()
-	agent = Agent(rulebook)
+	environment_handler = EnvironmentHandler()
+	agent = Agent(rulebook, environment_handler)
 	agent.restart()
 	# Pass the demonstration "online"
 	for state in demo_model:
