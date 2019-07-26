@@ -1,7 +1,6 @@
 import pickle
 import random
 import numpy as np
-from create_dataset import fullstate
 
 
 # -------------------------------------- Helper Functions ------------------------------------- #
@@ -42,6 +41,22 @@ def get_prev(pos, dirc):
 	elif dirc == 3:
 		return (pos[0] - 1, pos[1])
 
+
+def fullstate(state):
+    f_state = state.grid[:,:,1:12]
+    f_state = np.concatenate((f_state, np.zeros((12,12,1))), axis=2)
+    f_state[state.pos[0], state.pos[1], 11] = 1
+    if state.dir == 2:   #left
+        f_state[state.pos[0] - 1, state.pos[1], 11] = -1
+    elif state.dir == 3: #right
+        f_state[state.pos[0] + 1, state.pos[1], 11] = -1
+    elif state.dir == 1: #up
+        f_state[state.pos[0], state.pos[1] + 1, 11] = -1
+    elif state.dir == 0: #down
+        f_state[state.pos[0], state.pos[1] - 1, 11] = -1
+    return f_state
+
+
 # ----------------------------------------- Rule Book ----------------------------------------- #
 
 
@@ -79,7 +94,7 @@ class RuleBook():
 		return None, None
 
 
-string_num_dict = { "free: 0, ""w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
+string_num_dict = { "free": 0, "w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
 num_string_dict = { 0: "free", 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
 
 
@@ -381,9 +396,11 @@ class Agent():
 
 
 def main():
-	# Let's import a map and see
-	demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
-	demo_model = [ fullstate(s) for s in demos[0][0] ]
+	# Pick a demo
+	#demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
+	#demo_model = [ fullstate(s) for s in demos[0][0] ]
+	demo = pickle.load(open("iron_one.pk", "rb"))
+	demo_model = [ fullstate(s) for s in demo ]
 	# Initialise agent and rulebook
 	rulebook = RuleBook()
 	agent = Agent(rulebook)

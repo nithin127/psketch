@@ -24,6 +24,7 @@ RIGHT = 3
 USE = 4
 N_ACTIONS = USE + 1
 
+
 def random_free(grid, random):
     pos = None
     while pos is None:
@@ -45,6 +46,7 @@ def neighbors(pos, dir=None):
     if y < HEIGHT - 1 and (dir is None or dir == UP):
         neighbors.append((x, y+1))
     return neighbors
+
 
 class CraftWorld(object):
     def __init__(self):
