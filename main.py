@@ -105,16 +105,74 @@ num_string_dict = { 0: "free", 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass",
 class EnvironmentHandler():
 	def __init__(self):
 		# We define the set of environments here
-		# With objects defined inside
-		pass
+		self.envs = pickle.load(open("envs.pk", "rb"))
+		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
+				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
+		self.environment_characteristic = { "wood": 0, "iron": 0, "grass": 0, "w0": 0, "w1": 0, "w2": 0, "water": 0, \
+				"stone": 0, "gold": 0, "gem": 0 }
 
+		
 	def train(self, event, prev_events, agent):
-		# Get environment -- similar, different
-		# Replicate the demonstration
-		pass
+		# Replicate the demonstration in different environments
+		# 1. Exact replication, in all environments
+		demos = []
+		prev_event_sequences = []
+		for env in self.envs:
+			demo = []
+			for event_i, store_demo in zip(prev_events + [event], [False]*len(prev_events) + [True]):
+				# Prepare environment through previous events
+				# Find object location
+				world = agent.observation_function(fullstate(env))
+				start = np.where(world == 1)
+				object_location = np.where(world == event_i["object_before"])
+				if len(object_location[0]) > 1:
+					object_location = object_location[0][0], object_location[1][0]
+				elif len(object_location[0]) == 1:
+					actions = agent.skills[event_i["trigger"]](world, start, object_location)
+				else:
+					continue
+				if store_demo: demo.append(env)
+				for a in actions:
+					_, env = env.step(a)
+					if store_demo: demo.append(env)
+			# Now generalise !
+			demos.append(demo)
+			prev_event_sequences.append(prev_events)
+		# 2. Randomised replication (change in order of previous events)
+		# Skip for now
+		# 3. Randomised replication (new events executed in between previous events, dropping off some of the previous events)
+		# Skip for now
+		self.analyse(event, demos, prev_event_sequences, agent)
 
-	def test(self, events, agent):
-		pass
+
+	def analyse_state(self, world):
+		env_char = self.environment_characteristic.copy()
+		for item in range(3,13):
+			item_loc = np.where(world == item)
+			env_char[num_string_dict[item]] += len(item_loc[0])
+		return env_char
+
+
+	def analyse(self, event, demos, prev_event_sequences, agent):
+		# Items in the environment, at the start
+		# Starting inventory  |  The environment is fully observable
+		no_demo = []
+		for i, demo, prev_events in enumerate(zip(demos, prev_event_sequences)):
+			if demo == []:
+				no_demo.append(i)
+				continue
+			start_inventory = demo[0].inventory 
+			start_characteristic = self.analyse_state(agent.observation_function(fullstate(demo[0])))
+			end_inventory = demo[-1].inventory
+			end_characteristic = self.analyse_state(agent.observation_function(fullstate(demo[-1])))
+			agent.current_state_sequence = [fullstate(s) for s in demo]
+			concept = agent.describe_actions(event["trigger"])
+			succesful_replication = (concept == event)
+			# Store all this information
+			import ipdb; ipdb.set_trace()
+		# Now form a rule
+		# And add this to the agent's rule book
+
 
 
 
@@ -130,6 +188,7 @@ class Agent():
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		# These things can be replaced by neural networks
+		self.skills = [ self.navigation, self.use_object ]
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
 		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after) ]
 		# Agent's memory
@@ -137,6 +196,7 @@ class Agent():
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
 		self.current_inventory = [ self.inventory_format.copy() ]
+		self.rule_sequence = []
 		self.events = []
 
 
@@ -172,7 +232,12 @@ class Agent():
 					ind = segs_i.index(1)
 					# Ind is a concept trigger
 					# Give this to concept function and reinitialise
-					self.describe_actions(ind, preds_i)
+					event_i = self.describe_actions(ind)
+					self.events.append(event_i)
+					if ind == 0:
+						print("Go to: {}".format(pred))
+					elif ind == 1:
+						print("Use object at {}".format(pred))
 					self.reinitialise_current_arrays()
 					break
 		else:
@@ -180,16 +245,12 @@ class Agent():
 			self.current_prediction_array.append(preds)	
 
 
-	def describe_actions(self, ind, pred):
-		if ind == 0:
-			print("Go to: {}".format(pred))
-		elif ind == 1:
-			print("Use object at {}".format(pred))
+	def describe_actions(self, ind):
 		# Instead of appending state_sequence, append the result of the concept function
 		concepts = {"trigger": ind}
 		for key, c_func in self.concept_functions:
 			concepts[key] = c_func(self.current_state_sequence[-2:])
-		self.events.append(concepts)
+		return concepts
 
 
 	def what_happened(self):
@@ -198,7 +259,12 @@ class Agent():
 			segs_i, preds_i = self.current_segmentation_array[-1], self.current_prediction_array[-1]
 			if 1 in segs_i:
 				ind = segs_i.index(1)
-				self.describe_actions(ind, preds_i)
+				event_i = self.describe_actions(ind, preds_i)
+				self.events.append(event_i)
+				if ind == 0:
+					print("Go to: {}".format(pred))
+				elif ind == 1:
+					print("Use object at {}".format(pred))	
 			else:
 				print("None of the skills have been completely executed")
 		else:
@@ -206,17 +272,17 @@ class Agent():
 		self.reinitialise_current_arrays()
 		# Now let's see what happened in events
 		print("------------------------")
-		print("Describing events")
+		print("   Describing events    ")
 		print("------------------------")
 		for ie, event in enumerate(self.events):
 			num, text = self.rulebook.rule_number(event, self.current_inventory)
 			if num:
 				print("Event {}. {}".format(ie, text))
+				rule_sequence.append(num)
 			else:
 				print("Unrecoginsed event, back to training")
-				import ipdb; ipdb.set_trace()
 				# Here we pass the event back to training
-				environment_handler.train(event, self.events[:ie], self)
+				self.environment_handler.train(event, self.events[:ie], self)
 		self.restart()
 		return None
 
@@ -386,7 +452,7 @@ class Agent():
 			if len(actions) >= len(demo_model):
 				return (0.5, None)
 			else:
-				return (0, None)		
+				return (0, None)
 
 
 	def object_in_front_before(self, states):
