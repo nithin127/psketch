@@ -144,7 +144,7 @@ class EnvironmentHandler():
 		# Skip for now
 		# 3. Randomised replication (new events executed in between previous events, dropping off some of the previous events)
 		# Skip for now
-		self.analyse(event, demos, prev_event_sequences, agent)
+		return self.analyse(event, demos, prev_event_sequences, agent)
 
 
 	def analyse_state(self, world):
@@ -160,7 +160,7 @@ class EnvironmentHandler():
 		items = ["iron", "grass", "wood", "gold", "gem", "plank", "stick", "axe", "rope", "bed", \
 			"shears", "cloth", "bridge", "ladder"]
 		for i, item in enumerate(items):
-			formatted_inventory[item] = inventory[i+7]
+			formatted_inventory[item] = int(inventory[i+7])
 		return formatted_inventory
 
 
@@ -204,8 +204,11 @@ class EnvironmentHandler():
 		rule["inventory_after"] = information_storage["end_inventory"][successes[0]]
 		for c_text, _ in agent.concept_functions:
 			rule[c_text] = information_storage["event_details"][successes[0]][c_text]
+		# Rule text, hard-coded here. Lol
+		rule["text"] = "Got iron"
 		agent.rulebook.rule_list.append(rule)
-		import ipdb; ipdb.set_trace()
+		return True
+
 
 
 # --------------------------------------- Agent Function -------------------------------------- #
@@ -227,7 +230,7 @@ class Agent():
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
-		self.current_inventory = [ self.inventory_format.copy() ]
+		self.current_inventory = self.inventory_format.copy() 
 		self.rule_sequence = []
 		self.events = []
 
@@ -236,12 +239,15 @@ class Agent():
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
+		self.current_inventory = self.inventory_format.copy() 
 
 
 	def restart(self):
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
+		self.current_inventory = self.inventory_format.copy() 
+		self.rule_sequence = []
 		self.events = []
 
 
@@ -310,13 +316,18 @@ class Agent():
 			num, text = self.rulebook.rule_number(event, self.current_inventory)
 			if num:
 				print("Event {}. {}".format(ie, text))
-				rule_sequence.append(num)
+				self.rule_sequence.append(num)
 			else:
 				print("Unrecoginsed event, back to training")
 				# Here we pass the event back to training
-				self.environment_handler.train(event, self.events[:ie], self)
-		self.restart()
-		return None
+				success = self.environment_handler.train(event, self.events[:ie], self)
+				if success:
+					print("Successfully updated the rule list, redoing event prediction")
+					self.rule_sequence = []
+					_ = self.what_happened()
+				else:
+					print("Couldn't find a rule, skipping event {}".format(ie))
+		return self.rule_sequence, self.events
 
 
 	def observation_function(self, s):
@@ -490,13 +501,13 @@ class Agent():
 	def object_in_front_before(self, states):
 		state_obs1 = self.observation_function(states[0])
 		direction1 = np.where((state_obs1 + 0.5) % 1 == 0)
-		return state_obs1[direction1] + 0.5
+		return int((state_obs1[direction1] + 0.5)[0])
 
 
 	def object_in_front_after(self, states):
 		state_obs2 = self.observation_function(states[1])
 		direction2 = np.where((state_obs2 + 0.5) % 1 == 0)
-		return state_obs2[direction2] + 0.5
+		return int((state_obs2[direction2] + 0.5)[0])
 
 
 	def current_position(self, states):
@@ -519,7 +530,9 @@ def main():
 	# Pass the demonstration "online"
 	for state in demo_model:
 		agent.next_state(state)
-	agent.what_happened()
+	rule_sequence, events = agent.what_happened()
+	agent.restart()
+	import ipdb; ipdb.set_trace()
 
 
 if __name__ == "__main__":
