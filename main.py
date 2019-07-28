@@ -160,7 +160,7 @@ class EnvironmentHandler():
 		items = ["iron", "grass", "wood", "gold", "gem", "plank", "stick", "axe", "rope", "bed", \
 			"shears", "cloth", "bridge", "ladder"]
 		for i, item in enumerate(items):
-            formatted_inventory[item] = inventory[i+7]
+			formatted_inventory[item] = inventory[i+7]
 		return formatted_inventory
 
 
