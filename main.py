@@ -110,6 +110,8 @@ class EnvironmentHandler():
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		self.environment_characteristic = { "wood": 0, "iron": 0, "grass": 0, "w0": 0, "w1": 0, "w2": 0, "water": 0, \
 				"stone": 0, "gold": 0, "gem": 0 }
+		self.rule_format = {"object_before": 0, "inventory_before": None, "object_after": 0, "inventory_after": None, \
+				"text": None}
 
 		
 	def train(self, event, prev_events, agent):
@@ -153,27 +155,57 @@ class EnvironmentHandler():
 		return env_char
 
 
+	def convert_to_inventory_format(self, inventory):
+		formatted_inventory = self.inventory_format.copy()
+		items = ["iron", "grass", "wood", "gold", "gem", "plank", "stick", "axe", "rope", "bed", \
+			"shears", "cloth", "bridge", "ladder"]
+		for i, item in enumerate(items):
+            formatted_inventory[item] = inventory[i+7]
+		return formatted_inventory
+
+
 	def analyse(self, event, demos, prev_event_sequences, agent):
 		# Items in the environment, at the start
 		# Starting inventory  |  The environment is fully observable
-		no_demo = []
-		for i, demo, prev_events in enumerate(zip(demos, prev_event_sequences)):
+		information_storage = {"start_inventory": [], "start_characteristic": [], "end_inventory": [], \
+			"end_characteristic": [], "replication": [], "event_details": []}
+		for i, (demo, prev_events) in enumerate(zip(demos, prev_event_sequences)):
+			no_demo = False
 			if demo == []:
-				no_demo.append(i)
-				continue
-			start_inventory = demo[0].inventory 
-			start_characteristic = self.analyse_state(agent.observation_function(fullstate(demo[0])))
-			end_inventory = demo[-1].inventory
-			end_characteristic = self.analyse_state(agent.observation_function(fullstate(demo[-1])))
-			agent.current_state_sequence = [fullstate(s) for s in demo]
-			concept = agent.describe_actions(event["trigger"])
-			succesful_replication = (concept == event)
-			# Store all this information
-			import ipdb; ipdb.set_trace()
-		# Now form a rule
+				no_demo = True
+				demo = [self.envs[i]]
+			# Getting relevant information
+			information_storage["start_inventory"].append(self.convert_to_inventory_format(demo[0].inventory))
+			information_storage["start_characteristic"].append(self.analyse_state(agent.observation_function(fullstate(demo[0]))))
+			information_storage["end_inventory"].append(self.convert_to_inventory_format(demo[-1].inventory))
+			information_storage["end_characteristic"].append(self.analyse_state(agent.observation_function(fullstate(demo[-1]))))
+			if no_demo:
+				information_storage["replication"].append(None)
+			else:
+				agent.current_state_sequence = [fullstate(s) for s in demo]
+				concept = agent.describe_actions(event["trigger"])
+				agent.reinitialise_current_arrays()
+				information_storage["replication"].append(concept == event)
+				information_storage["event_details"].append(concept)
+		# Now, we distill the information to form a rule
+		# Success vs Failure cases
+		exceptions = []
+		successes = []
+		for i, success in enumerate(information_storage["replication"]):
+			if success:
+				successes.append(i)
+			else:
+				exceptions.append(i)
+		# Now, let's find similarities and differences
+		# Let's say this happens easily and we form a rule :p
 		# And add this to the agent's rule book
-
-
+		rule = self.rule_format.copy()
+		rule["inventory_before"] = information_storage["start_inventory"][successes[0]]
+		rule["inventory_after"] = information_storage["end_inventory"][successes[0]]
+		for c_text, _ in agent.concept_functions:
+			rule[c_text] = information_storage["event_details"][successes[0]][c_text]
+		agent.rulebook.rule_list.append(rule)
+		import ipdb; ipdb.set_trace()
 
 
 # --------------------------------------- Agent Function -------------------------------------- #
@@ -259,12 +291,12 @@ class Agent():
 			segs_i, preds_i = self.current_segmentation_array[-1], self.current_prediction_array[-1]
 			if 1 in segs_i:
 				ind = segs_i.index(1)
-				event_i = self.describe_actions(ind, preds_i)
+				event_i = self.describe_actions(ind)
 				self.events.append(event_i)
 				if ind == 0:
-					print("Go to: {}".format(pred))
+					print("Go to: {}".format(preds_i))
 				elif ind == 1:
-					print("Use object at {}".format(pred))	
+					print("Use object at {}".format(preds_i))	
 			else:
 				print("None of the skills have been completely executed")
 		else:
