@@ -29,44 +29,38 @@
   ["get_wood", "make1", "get_iron", "make0", "get_gem"]
 
 
-### Subtask index ###
-# 1: _make
-# 2: wood
-# 3: make0
-# 4: make1
-# 5: grass
-# 6: make2
-# 7: iron
-# 8: _get
-# 9: gold
-# 10: gem
+## Initial rule list
 
+# {"object_before": 8, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("wood")},
+# {"object_before": 3, "inventory_before": self.inventory_init(), "object_after": 3, "inventory_after": self.inventory_init()},
+# {"object_before": 7, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("grass")},
+# {"object_before": 4, "inventory_before": self.inventory_init("wood"), "object_after": 4, "inventory_after": self.inventory_init("stick")}
 
-# Cookbook; n_kinds
-#0 free
-#1 boundary
-#2 workshop0
-#3 workshop1
-#4 workshop2
-#5 water
-#6 stone
+## Complete rule list
 
+# {"object_before": 3, "inventory_before": self.inventory_init(), "object_after": 3, "inventory_after": self.inventory_init()},
+# {"object_before": 3, "inventory_before": self.inventory_init("wood"), "object_after": 3, "inventory_after": self.inventory_init("plank")},
+# {"object_before": 3, "inventory_before": self.inventory_init("grass"), "object_after": 3, "inventory_after": self.inventory_init("rope")},
+# {"object_before": 3, "inventory_before": self.inventory_init("stick,iron"), "object_after": 3, "inventory_after": self.inventory_init("axe")},
 
-#7 iron
-#8 grass
-#9 wood
-#10 gold
-#11 gem
+# {"object_before": 4, "inventory_before": self.inventory_init(), "object_after": 4, "inventory_after": self.inventory_init()}
+# {"object_before": 4, "inventory_before": self.inventory_init("wood"), "object_after": 4, "inventory_after": self.inventory_init("stick")}
+# {"object_before": 4, "inventory_before": self.inventory_init("plank,grass"), "object_after": 4, "inventory_after": self.inventory_init("bed")}
+# {"object_before": 4, "inventory_before": self.inventory_init("stick,iron"), "object_after": 4, "inventory_after": self.inventory_init("shears")}
 
+# {"object_before": 5, "inventory_before": self.inventory_init(), "object_after": 5, "inventory_after": self.inventory_init()}
+# {"object_before": 5, "inventory_before": self.inventory_init("grass"), "object_after": 5, "inventory_after": self.inventory_init("cloth")}
+# {"object_before": 5, "inventory_before": self.inventory_init("iron,wood"), "object_after": 5, "inventory_after": self.inventory_init("bridge")}
 
-#12 plank
-#13 stick
-#14 axe
-#15 rope
-#16 bed
-#17 shears
-#18 cloth
-#19 bridge
-#20 ladder
+# {"object_before": 6, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("iron")},
+# {"object_before": 7, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("grass")},
+# {"object_before": 8, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("wood")},
+# {"object_before": 9, "inventory_before": self.inventory_init(), "object_after": 9, "inventory_after": self.inventory_init()},
+# {"object_before": 9, "inventory_before": self.inventory_init("bridge"), "object_after": 0, "inventory_after": self.inventory_init()},
+# {"object_before": 10, "inventory_before": self.inventory_init(), "object_after": 10, "inventory_after": self.inventory_init()},
+# {"object_before": 10, "inventory_before": self.inventory_init("axe"), "object_after": 0, "inventory_after": self.inventory_init("axe")},
+# {"object_before": 11, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("gold")},
+# {"object_before": 12, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("gem")},
+
 
 

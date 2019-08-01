@@ -66,14 +66,18 @@ class RuleBook():
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		self.rule_list = [
-			{"object_before": 8, "inventory_before": None, "object_after": 0, "inventory_after": None, "text": "Got wood"},
-			{"object_before": 3, "inventory_before": None, "object_after": 3, "inventory_after": None, "text": "Used w0"},
-			{"object_before": 7, "inventory_before": None, "object_after": 0, "inventory_after": None, "text": "Got grass"},
-			{"object_before": 4, "inventory_before": self.inventory_format.copy(), "object_after": 4, \
-				"inventory_after": self.inventory_format.copy(), "text": "Made stick at w1"},
+			{"object_before": 8, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("wood")},
+			{"object_before": 3, "inventory_before": self.inventory_init(), "object_after": 3, "inventory_after": self.inventory_init()},
+			{"object_before": 7, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("grass")},
+			{"object_before": 4, "inventory_before": self.inventory_init("wood"), "object_after": 4, "inventory_after": self.inventory_init("stick")}
 		]
-		self.rule_list[-1]["inventory_before"]["wood"] += 1
-		self.rule_list[-1]["inventory_after"]["stick"] += 1
+
+
+	def inventory_init(self, text = None, num = 1):
+		inv = self.inventory_format.copy()
+		if text:
+			inv[text] += num
+		return inv
 
 
 	def rule_number(self, event, agent_inventory_before):
