@@ -2,6 +2,8 @@ import pickle
 import random
 import numpy as np
 
+from craft.envs.craft_world import CraftScenario, CraftWorld
+from craft.envs.cookbook import Cookbook
 
 # -------------------------------------- Helper Functions ------------------------------------- #
 
@@ -104,6 +106,12 @@ class RuleBook():
 
 string_num_dict = { "free": 0, "w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
 num_string_dict = { 0: "free", 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
+inventory_number = {"iron": 7, "grass": 8, "wood": 9, "gold": 10, "gem": 11, "plank": 12, "stick": 13, "axe": 14, \
+			"rope": 15, "bed": 16, "shears": 17, "cloth": 18, "bridge": 19, "ladder": 20}
+number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12: "plank", 13: "stick", 14: "axe", \
+			15: "rope", 16: "bed", 17: "shears", 18: "cloth", 19: "bridge", 20: "ladder"}
+
+
 
 
 class EnvironmentHandler():
@@ -112,52 +120,59 @@ class EnvironmentHandler():
 		self.envs = pickle.load(open("envs.pk", "rb"))
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
-		self.environment_characteristic = { "wood": 0, "iron": 0, "grass": 0, "w0": 0, "w1": 0, "w2": 0, "water": 0, \
-				"stone": 0, "gold": 0, "gem": 0 }
 		self.rule_format = {"object_before": 0, "inventory_before": None, "object_after": 0, "inventory_after": None, \
 				"text": None}
 
 		
-	def train(self, event, prev_events, agent):
+	def train(self, event):
 		# Replicate the demonstration in different environments
-		# 1. Exact replication, in all environments
-		demos = []
-		prev_event_sequences = []
-		for env in self.envs:
-			demo = []
-			for event_i, store_demo in zip(prev_events + [event], [False]*len(prev_events) + [True]):
-				# Prepare environment through previous events
-				# Find object location
-				world = agent.observation_function(fullstate(env))
-				start = np.where(world == 1)
-				object_location = np.where(world == event_i["object_before"])
-				if len(object_location[0]) > 1:
-					object_location = object_location[0][0], object_location[1][0]
-				elif len(object_location[0]) == 1:
-					actions = agent.skills[event_i["trigger"]](world, start, object_location)
-				else:
-					continue
-				if store_demo: demo.append(env)
-				for a in actions:
-					_, env = env.step(a)
-					if store_demo: demo.append(env)
-			# Now generalise !
-			demos.append(demo)
-			prev_event_sequences.append(prev_events)
-		# 2. Randomised replication (change in order of previous events)
-		# Skip for now
-		# 3. Randomised replication (new events executed in between previous events, dropping off some of the previous events)
-		# Skip for now
-		return self.analyse(event, demos, prev_event_sequences, agent)
+		cw = CraftWorld()
+		grid = np.zeros((WIDTH, HEIGHT, cw.cookbook.n_kinds))
+		i_bd = cw.cookbook.index["boundary"]
+		grid[0, :, i_bd] = 1
+		grid[WIDTH-1:, :, i_bd] = 1
+		grid[:, 0, i_bd] = 1
+		grid[:, HEIGHT-1:, i_bd] = 1
+		grid[5, 5, cw.cookbook.index[num_string_dict[event["object_before"]]]] = 1
+		scenario = CraftScenario(grid, (5,6), cw)
+		# "dataset"
+		state_set = []
+		prev_inventory_set = []
+		for i in range(7,21):
+			inventory = np.zeros(21,)
+			inventory[i] = 1
+			prev_inventory_set.append(inventory)
+			state_set.append(scenario.init(inventory))
 
+		for i in range(7,21):
+			for j in range(i+1, 21):
+				inventory = np.zeros(21,)
+				inventory[i] = 1
+				inventory[j] = 1
+				prev_inventory_set.append(inventory)
+				state_set.append(scenario.init(inventory))
+		
+		for _ in range(100):
+			inventory = np.random.randint(4, size=21)
+			prev_inventory_set.append(inventory)
+			state_set.append(scenario.init(inventory))
 
-	def analyse_state(self, world):
-		env_char = self.environment_characteristic.copy()
-		for item in range(3,13):
-			item_loc = np.where(world == item)
-			env_char[num_string_dict[item]] += len(item_loc[0])
-		return env_char
+		post_inventory_set = []
+		inventory_difference_set = []
+		object_in_front_difference_set = []
+		for i, ss in enumerate(state_set):
+			_, sss = ss.step(4)
+			post_inventory_set.append(sss.inventory)
+			inventory_difference_set.append(sss.inventory - prev_inventory_set[i])
+			object_in_front_difference_set.append(sss.grid[5,5].argmax() - event["object_before"])
 
+		# 0; 1, -1
+		# If something else: what object is it dependent on ... what object in inventory equals the thing. Check if it satisfies. 
+		# If there are multiple indices that satisfy the condition, check min(x, y, z)
+
+		import ipdb; ipdb.set_trace()
+	
+		
 
 	def convert_to_inventory_format(self, inventory):
 		formatted_inventory = self.inventory_format.copy()
@@ -166,52 +181,6 @@ class EnvironmentHandler():
 		for i, item in enumerate(items):
 			formatted_inventory[item] = int(inventory[i+7])
 		return formatted_inventory
-
-
-	def analyse(self, event, demos, prev_event_sequences, agent):
-		# Items in the environment, at the start
-		# Starting inventory  |  The environment is fully observable
-		information_storage = {"start_inventory": [], "start_characteristic": [], "end_inventory": [], \
-			"end_characteristic": [], "replication": [], "event_details": []}
-		for i, (demo, prev_events) in enumerate(zip(demos, prev_event_sequences)):
-			no_demo = False
-			if demo == []:
-				no_demo = True
-				demo = [self.envs[i]]
-			# Getting relevant information
-			information_storage["start_inventory"].append(self.convert_to_inventory_format(demo[0].inventory))
-			information_storage["start_characteristic"].append(self.analyse_state(agent.observation_function(fullstate(demo[0]))))
-			information_storage["end_inventory"].append(self.convert_to_inventory_format(demo[-1].inventory))
-			information_storage["end_characteristic"].append(self.analyse_state(agent.observation_function(fullstate(demo[-1]))))
-			if no_demo:
-				information_storage["replication"].append(None)
-			else:
-				agent.current_state_sequence = [fullstate(s) for s in demo]
-				concept = agent.describe_actions(event["trigger"])
-				agent.reinitialise_current_arrays()
-				information_storage["replication"].append(concept == event)
-				information_storage["event_details"].append(concept)
-		# Now, we distill the information to form a rule
-		# Success vs Failure cases
-		exceptions = []
-		successes = []
-		for i, success in enumerate(information_storage["replication"]):
-			if success:
-				successes.append(i)
-			else:
-				exceptions.append(i)
-		# Now, let's find similarities and differences
-		# Let's say this happens easily and we form a rule :p
-		# And add this to the agent's rule book
-		rule = self.rule_format.copy()
-		rule["inventory_before"] = information_storage["start_inventory"][successes[0]]
-		rule["inventory_after"] = information_storage["end_inventory"][successes[0]]
-		for c_text, _ in agent.concept_functions:
-			rule[c_text] = information_storage["event_details"][successes[0]][c_text]
-		# Rule text, hard-coded here. Lol
-		rule["text"] = "Got iron"
-		agent.rulebook.rule_list.append(rule)
-		return True
 
 
 
@@ -324,7 +293,7 @@ class Agent():
 			else:
 				print("Unrecoginsed event, back to training")
 				# Here we pass the event back to training
-				success = self.environment_handler.train(event, self.events[:ie], self)
+				success = self.environment_handler.train(event)
 				if success:
 					print("Successfully updated the rule list, redoing event prediction")
 					self.rule_sequence = []

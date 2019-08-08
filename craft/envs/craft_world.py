@@ -178,8 +178,11 @@ class CraftScenario(object):
         self.init_dir = 0
         self.world = world
 
-    def init(self):
-        inventory = np.zeros(self.world.cookbook.n_kinds)
+    def init(self, inventory = [None]):
+        if inventory[0] == None:
+            inventory = np.zeros(self.world.cookbook.n_kinds)
+        else:
+            pass
         state = CraftState(self, self.init_grid, self.init_pos, self.init_dir, inventory)
         return state
 

@@ -36,6 +36,7 @@
 # {"object_before": 7, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("grass")},
 # {"object_before": 4, "inventory_before": self.inventory_init("wood"), "object_after": 4, "inventory_after": self.inventory_init("stick")}
 
+
 ## Complete rule list
 
 # {"object_before": 3, "inventory_before": self.inventory_init(), "object_after": 3, "inventory_after": self.inventory_init()},
@@ -61,6 +62,5 @@
 # {"object_before": 10, "inventory_before": self.inventory_init("axe"), "object_after": 0, "inventory_after": self.inventory_init("axe")},
 # {"object_before": 11, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("gold")},
 # {"object_before": 12, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("gem")},
-
 
 
