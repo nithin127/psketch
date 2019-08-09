@@ -62,50 +62,8 @@ def fullstate(state):
 # ----------------------------------------- Rule Book ----------------------------------------- #
 
 
-class RuleBook():
-	def __init__(self):
-		self.rule_structure = {"object_before": None, "inventory_before": None, "object_after": None, "inventory_after": None}
-		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
-				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
-		self.rule_list = [
-			{"object_before": 8, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("wood")},
-			{"object_before": 3, "inventory_before": self.inventory_init(), "object_after": 3, "inventory_after": self.inventory_init()},
-			{"object_before": 7, "inventory_before": self.inventory_init(), "object_after": 0, "inventory_after": self.inventory_init("grass")},
-			{"object_before": 4, "inventory_before": self.inventory_init("wood"), "object_after": 4, "inventory_after": self.inventory_init("stick")}
-		]
-
-
-	def inventory_init(self, text = None, num = 1):
-		inv = self.inventory_format.copy()
-		if text:
-			inv[text] += num
-		return inv
-
-
-	def rule_number(self, event, agent_inventory_before):
-		# We're assuming no two rules satisfy the same criteria, for now
-		# Also, no complications with multiple objects in the inventories, we'll see as we go
-		for rule_num, rule in enumerate(self.rule_list):
-			if (rule["object_before"] == event["object_before"]) and (rule["object_after"] == event["object_after"]):
-				if rule["inventory_before"]:
-					if rule["inventory_before"] == agent_inventory_before:
-						agent_inventory_before = rule["inventory_after"]
-						return rule_num, rule["text"]
-					else:
-						pass
-				else:
-					return rule_num, rule["text"]
-			else:
-				pass
-		return None, None
-
-
-	def add_rule(self):
-		return None
-
-
-string_num_dict = { "free": 0, "w0": 3, "w1": 4, "w2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
-num_string_dict = { 0: "free", 3: "w0", 4: "w1", 5: "w2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
+string_num_dict = { "free": 0, "workshop0": 3, "workshop1": 4, "workshop2": 5, "iron": 6, "grass": 7, "wood": 8, "water": 9, "stone": 10, "gold": 11, "gem": 12 }
+num_string_dict = { 0: "free", 3: "workshop0", 4: "workshop1", 5: "workshop2", 6: "iron", 7: "grass", 8: "wood", 9: "water", 10: "stone", 11: "gold", 12: "gem" }		
 inventory_number = {"iron": 7, "grass": 8, "wood": 9, "gold": 10, "gem": 11, "plank": 12, "stick": 13, "axe": 14, \
 			"rope": 15, "bed": 16, "shears": 17, "cloth": 18, "bridge": 19, "ladder": 20}
 number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12: "plank", 13: "stick", 14: "axe", \
@@ -124,7 +82,7 @@ class EnvironmentHandler():
 				"text": None}
 
 		
-	def train(self, event):
+	def train(self, event, agent):
 		# Replicate the demonstration in different environments
 		cw = CraftWorld()
 		grid = np.zeros((WIDTH, HEIGHT, cw.cookbook.n_kinds))
@@ -137,11 +95,11 @@ class EnvironmentHandler():
 		scenario = CraftScenario(grid, (5,6), cw)
 		# "dataset"
 		state_set = []
-		prev_inventory_set = []
+		prev_inventory_set = np.empty((0,21))
 		for i in range(7,21):
 			inventory = np.zeros(21,)
 			inventory[i] = 1
-			prev_inventory_set.append(inventory)
+			prev_inventory_set = np.append(prev_inventory_set, np.expand_dims(inventory, axis = 0), axis = 0)
 			state_set.append(scenario.init(inventory))
 
 		for i in range(7,21):
@@ -149,30 +107,57 @@ class EnvironmentHandler():
 				inventory = np.zeros(21,)
 				inventory[i] = 1
 				inventory[j] = 1
-				prev_inventory_set.append(inventory)
+				prev_inventory_set = np.append(prev_inventory_set, np.expand_dims(inventory, axis = 0), axis = 0)
 				state_set.append(scenario.init(inventory))
 		
 		for _ in range(100):
 			inventory = np.random.randint(4, size=21)
-			prev_inventory_set.append(inventory)
+			prev_inventory_set = np.append(prev_inventory_set, np.expand_dims(inventory, axis = 0), axis = 0)
 			state_set.append(scenario.init(inventory))
 
 		post_inventory_set = []
-		inventory_difference_set = []
-		object_in_front_difference_set = []
+		difference_set = np.empty((0, 22))
 		for i, ss in enumerate(state_set):
 			_, sss = ss.step(4)
 			post_inventory_set.append(sss.inventory)
-			inventory_difference_set.append(sss.inventory - prev_inventory_set[i])
-			object_in_front_difference_set.append(sss.grid[5,5].argmax() - event["object_before"])
+			# object_in_front_difference should only be -1 or 0, or it is disaster
+			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - event["object_before"], -1, 1)
+			difference = np.expand_dims(np.append(object_in_front_difference, sss.inventory - prev_inventory_set[i]), axis = 0)
+			difference_set = np.append(difference_set, difference, axis = 0)
 
+		
+		# Now, let's get transition rules for every one of the inventory things, and the object in front (before/after)
 		# 0; 1, -1
 		# If something else: what object is it dependent on ... what object in inventory equals the thing. Check if it satisfies. 
 		# If there are multiple indices that satisfy the condition, check min(x, y, z)
 
-		import ipdb; ipdb.set_trace()
-	
-		
+		rules = []
+
+
+		for item in range(22):
+			unique_items = np.unique(difference_set[:,item])
+			if len(unique_items) == 1:
+				rules.append(unique_items[0])
+			else:
+				what_fits = []
+				for i in range(21):
+					for j in range(i+1, 21):
+						if (unique_items.clip(-1,1) == unique_items).all():
+							import ipdb; ipdb.set_trace()
+							if (difference_set[:, item] ==  min(1, prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
+								what_fits.append(1, 1, i, j)
+							if (difference_set[:, item] ==  -min(1, prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
+								what_fits.append(-1, 1, i, j)
+						else:
+							if (difference_set[:, item] ==  min(prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
+								what_fits.append(1, i, j)
+							if (difference_set[:, item] ==  -min(prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
+								what_fits.append(-1, i, j)
+				if len(what_fits) == 1:
+					rules.append(what_fits[0])
+
+		agent.rule_list.append((event["object_before"], rules))
+
 
 	def convert_to_inventory_format(self, inventory):
 		formatted_inventory = self.inventory_format.copy()
@@ -188,11 +173,11 @@ class EnvironmentHandler():
 
 
 class Agent():
-	def __init__(self, rulebook, environment_handler):
+	def __init__(self, environment_handler):
 		# Level 3: Agent can see the basic environment usables and workshops distinctly
 		# Agent has a sense of direction, and a basic sense of inventory
 		self.environment_handler = environment_handler
-		self.rulebook = rulebook
+		self.rule_list = []
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		# These things can be replaced by neural networks
@@ -286,20 +271,16 @@ class Agent():
 		print("   Describing events    ")
 		print("------------------------")
 		for ie, event in enumerate(self.events):
-			num, text = self.rulebook.rule_number(event, self.current_inventory)
-			if num:
-				print("Event {}. {}".format(ie, text))
-				self.rule_sequence.append(num)
-			else:
-				print("Unrecoginsed event, back to training")
-				# Here we pass the event back to training
-				success = self.environment_handler.train(event)
-				if success:
-					print("Successfully updated the rule list, redoing event prediction")
-					self.rule_sequence = []
-					_ = self.what_happened()
-				else:
-					print("Couldn't find a rule, skipping event {}".format(ie))
+			found = False
+			for ir, (rule, transformation) in enumerate(self.rule_list):
+				if event["object_before"] == rule:
+					self.rule_sequence.append(ir)
+					found = True
+			if not found:
+				print("Rule not found. Training and redoing the thing")
+				self.environment_handler.train(event, self)
+				self.rule_sequence = []
+				_, _ = self.what_happened()
 		return self.rule_sequence, self.events
 
 
@@ -496,9 +477,9 @@ def main():
 	demo = pickle.load(open("iron_one_demo.pk", "rb"))
 	demo_model = [ fullstate(s) for s in demo ]
 	# Initialise agent and rulebook
-	rulebook = RuleBook()
 	environment_handler = EnvironmentHandler()
-	agent = Agent(rulebook, environment_handler)
+	agent = Agent(environment_handler)
+	environment_handler.train({"object_before": 3}, agent)
 	agent.restart()
 	# Pass the demonstration "online"
 	for state in demo_model:
