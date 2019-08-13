@@ -71,7 +71,6 @@ number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12:
 
 
 
-
 class EnvironmentHandler():
 	def __init__(self):
 		# We define the set of environments here
@@ -95,11 +94,9 @@ class EnvironmentHandler():
 		scenario = CraftScenario(grid, (5,6), cw)
 		# "dataset"
 		state_set = []
-		prev_inventory_set = np.empty((0,21))
 		for i in range(7,21):
 			inventory = np.zeros(21,)
 			inventory[i] = 1
-			prev_inventory_set = np.append(prev_inventory_set, np.expand_dims(inventory, axis = 0), axis = 0)
 			state_set.append(scenario.init(inventory))
 
 		for i in range(7,21):
@@ -107,22 +104,22 @@ class EnvironmentHandler():
 				inventory = np.zeros(21,)
 				inventory[i] = 1
 				inventory[j] = 1
-				prev_inventory_set = np.append(prev_inventory_set, np.expand_dims(inventory, axis = 0), axis = 0)
 				state_set.append(scenario.init(inventory))
 		
 		for _ in range(100):
 			inventory = np.random.randint(4, size=21)
-			prev_inventory_set = np.append(prev_inventory_set, np.expand_dims(inventory, axis = 0), axis = 0)
 			state_set.append(scenario.init(inventory))
 
 		post_inventory_set = []
+		prev_inventory_set = np.empty((0, 21))
 		difference_set = np.empty((0, 22))
 		for i, ss in enumerate(state_set):
 			_, sss = ss.step(4)
 			post_inventory_set.append(sss.inventory)
+			prev_inventory_set  = np.append(prev_inventory_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
 			# object_in_front_difference should only be -1 or 0, or it is disaster
-			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - event["object_before"], -1, 1)
-			difference = np.expand_dims(np.append(object_in_front_difference, sss.inventory - prev_inventory_set[i]), axis = 0)
+			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - ss.grid[5,5].argmax(), -1, 1)
+			difference = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
 			difference_set = np.append(difference_set, difference, axis = 0)
 
 		
@@ -130,9 +127,8 @@ class EnvironmentHandler():
 		# 0; 1, -1
 		# If something else: what object is it dependent on ... what object in inventory equals the thing. Check if it satisfies. 
 		# If there are multiple indices that satisfy the condition, check min(x, y, z)
-
+		
 		rules = []
-
 
 		for item in range(22):
 			unique_items = np.unique(difference_set[:,item])
@@ -143,19 +139,22 @@ class EnvironmentHandler():
 				for i in range(21):
 					for j in range(i+1, 21):
 						if (unique_items.clip(-1,1) == unique_items).all():
-							import ipdb; ipdb.set_trace()
-							if (difference_set[:, item] ==  min(1, prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
+							if (difference_set[:, item] ==  np.minimum(1, prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
 								what_fits.append(1, 1, i, j)
-							if (difference_set[:, item] ==  -min(1, prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
+							if (difference_set[:, item] ==  -np.minimum(1, prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
 								what_fits.append(-1, 1, i, j)
 						else:
-							if (difference_set[:, item] ==  min(prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
+							if (difference_set[:, item] ==  np.minimum(prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
 								what_fits.append(1, i, j)
-							if (difference_set[:, item] ==  -min(prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
+							if (difference_set[:, item] ==  -np.minimum(prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
 								what_fits.append(-1, i, j)
+				#import ipdb; ipdb.set_trace()
 				if len(what_fits) == 1:
 					rules.append(what_fits[0])
+				else:
+					rules.append(None)
 
+		import ipdb; ipdb.set_trace()
 		agent.rule_list.append((event["object_before"], rules))
 
 
