@@ -3,7 +3,6 @@ import random
 import numpy as np
 
 from craft.envs.craft_world import CraftScenario, CraftWorld
-from craft.envs.cookbook import Cookbook
 
 # -------------------------------------- Helper Functions ------------------------------------- #
 
@@ -95,13 +94,13 @@ class EnvironmentHandler():
 		# "dataset"
 		state_set = []
 		for i in range(7,21):
-			inventory = np.zeros(21,)
+			inventory = np.zeros(21, dtype=int)
 			inventory[i] = 1
 			state_set.append(scenario.init(inventory))
 
 		for i in range(7,21):
 			for j in range(i+1, 21):
-				inventory = np.zeros(21,)
+				inventory = np.zeros(21, dtype=int)
 				inventory[i] = 1
 				inventory[j] = 1
 				state_set.append(scenario.init(inventory))
@@ -122,33 +121,34 @@ class EnvironmentHandler():
 			difference = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
 			difference_set = np.append(difference_set, difference, axis = 0)
 
-		
+
 		# Now, let's get transition rules for every one of the inventory things, and the object in front (before/after)
 		# 0; 1, -1
 		# If something else: what object is it dependent on ... what object in inventory equals the thing. Check if it satisfies. 
 		# If there are multiple indices that satisfy the condition, check min(x, y, z)
-		
+
 		rules = []
+		length_set = len(difference_set)
 
 		for item in range(22):
-			unique_items = np.unique(difference_set[:,item])
+			difference_thing = difference_set[:, item].copy()
+			unique_items = np.unique(difference_thing)
 			if len(unique_items) == 1:
 				rules.append(unique_items[0])
 			else:
 				what_fits = []
 				for i in range(21):
+					criteria0 = np.array([min(1, prev_inventory_set[k, i]) for k in range(length_set)])
 					for j in range(i+1, 21):
-						if (unique_items.clip(-1,1) == unique_items).all():
-							if (difference_set[:, item] ==  np.minimum(1, prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
-								what_fits.append(1, 1, i, j)
-							if (difference_set[:, item] ==  -np.minimum(1, prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
-								what_fits.append(-1, 1, i, j)
-						else:
-							if (difference_set[:, item] ==  np.minimum(prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
-								what_fits.append(1, i, j)
-							if (difference_set[:, item] ==  -np.minimum(prev_inventory_set[:, i], prev_inventory_set[:, j])).all():
-								what_fits.append(-1, i, j)
-				#import ipdb; ipdb.set_trace()
+						criteria = np.array([min(1, prev_inventory_set[k, i], prev_inventory_set[k, j]) for k in range(length_set)])
+						if (difference_thing == criteria).all():
+							what_fits.append((1, 1, i, j))
+						if (difference_thing == -criteria).all():
+							what_fits.append((-1, 1, i, j))
+					if (difference_thing == criteria0).all():
+						what_fits.append((1, 1, i))
+					if (difference_thing == -criteria0).all():
+						what_fits.append((-1, 1, i))			
 				if len(what_fits) == 1:
 					rules.append(what_fits[0])
 				else:
@@ -478,13 +478,15 @@ def main():
 	# Initialise agent and rulebook
 	environment_handler = EnvironmentHandler()
 	agent = Agent(environment_handler)
-	environment_handler.train({"object_before": 3}, agent)
+	environment_handler.train({"object_before": 4}, agent)
 	agent.restart()
 	# Pass the demonstration "online"
-	for state in demo_model:
-		agent.next_state(state)
-	rule_sequence, events = agent.what_happened()
-	agent.restart()
+	#for state in demo_model:
+	#	agent.next_state(state)
+	#rule_sequence, events = agent.what_happened()
+	#agent.restart()
+	for obj, rule in agent.rule_list: 
+		print("obj:{}, rules:{}\n\n".format(obj,rule))
 	import ipdb; ipdb.set_trace()
 
 
