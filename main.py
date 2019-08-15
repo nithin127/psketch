@@ -137,10 +137,10 @@ class EnvironmentHandler():
 				rules.append(unique_items[0])
 			else:
 				what_fits = []
-				for i in [7]:
+				for i in range(21):
 					# Criteria 0: one object exists
 					criteria0 = np.array([min(1, prev_inventory_set[k, i]) for k in range(length_set)])
-					for j in [9]:
+					for j in range(21):
 						# Criteria 1: two objects exists
 						# Criteria 2: object 1 exists but not object 2
 						# Criteria 3: object 2 exists but not object 1
