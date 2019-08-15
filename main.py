@@ -130,25 +130,39 @@ class EnvironmentHandler():
 		rules = []
 		length_set = len(difference_set)
 
-		for item in range(22):
+		for item in [7]:
 			difference_thing = difference_set[:, item].copy()
 			unique_items = np.unique(difference_thing)
 			if len(unique_items) == 1:
 				rules.append(unique_items[0])
 			else:
 				what_fits = []
-				for i in range(21):
+				for i in [7]:
+					# Criteria 0: one object exists
 					criteria0 = np.array([min(1, prev_inventory_set[k, i]) for k in range(length_set)])
-					for j in range(i+1, 21):
-						criteria = np.array([min(1, prev_inventory_set[k, i], prev_inventory_set[k, j]) for k in range(length_set)])
-						if (difference_thing == criteria).all():
-							what_fits.append((1, 1, i, j))
-						if (difference_thing == -criteria).all():
-							what_fits.append((-1, 1, i, j))
+					for j in [9]:
+						# Criteria 1: two objects exists
+						# Criteria 2: object 1 exists but not object 2
+						# Criteria 3: object 2 exists but not object 1
+						criteria1 = np.array([int((prev_inventory_set[k, i] > 0) and (prev_inventory_set[k, j] > 0)) for k in range(length_set)])
+						criteria2 = np.array([int((prev_inventory_set[k, i] > 0) and (prev_inventory_set[k, j] == 0)) for k in range(length_set)])
+						criteria3 = np.array([int((prev_inventory_set[k, i] == 0) and (prev_inventory_set[k, j] > 0)) for k in range(length_set)])
+						if (difference_thing == criteria1).all():
+							what_fits.append((1, (True, True), i, j))
+						if (difference_thing == -criteria1).all():
+							what_fits.append((-1, (True, True), i, j))
+						if (difference_thing == criteria2).all():
+							what_fits.append((1, (True, False), i, j))
+						if (difference_thing == -criteria2).all():
+							what_fits.append((-1, (True, False), i, j))
+						if (difference_thing == criteria3).all():
+							what_fits.append((1, (False, True), i, j))
+						if (difference_thing == -criteria3).all():
+							what_fits.append((-1, (False, True), i, j))
 					if (difference_thing == criteria0).all():
-						what_fits.append((1, 1, i))
+						what_fits.append((1, True, i))
 					if (difference_thing == -criteria0).all():
-						what_fits.append((-1, 1, i))			
+						what_fits.append((-1, True, i))			
 				if len(what_fits) == 1:
 					rules.append(what_fits[0])
 				else:
@@ -355,8 +369,8 @@ class Agent():
 		if len(demo_model) < 2:
 			return (0.5, None)
 		world_level_1 = self.observation_function(demo_model[0])
-		start_state = np.where(world_level_1==1)
-		end_state = np.where(self.observation_function(demo_model[-1])==1)
+		start_state = np.where(world_level_1 == 1)
+		end_state = np.where(self.observation_function(demo_model[-1]) == 1)
 		actions = self.navigation(world_level_1, start_state, end_state)
 		if len(actions) < len(demo_model) - 1:
 			return (0, None)
