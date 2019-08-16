@@ -104,7 +104,7 @@ class EnvironmentHandler():
 				inventory[i] = 1
 				inventory[j] = 1
 				state_set.append(scenario.init(inventory))
-		
+
 		for _ in range(100):
 			inventory = np.random.randint(4, size=21)
 			state_set.append(scenario.init(inventory))
@@ -112,64 +112,24 @@ class EnvironmentHandler():
 		post_inventory_set = []
 		prev_inventory_set = np.empty((0, 21))
 		difference_set = np.empty((0, 22))
+
 		for i, ss in enumerate(state_set):
 			_, sss = ss.step(4)
-			post_inventory_set.append(sss.inventory)
-			prev_inventory_set  = np.append(prev_inventory_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
 			# object_in_front_difference should only be -1 or 0, or it is disaster
 			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - ss.grid[5,5].argmax(), -1, 1)
-			difference = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
-			difference_set = np.append(difference_set, difference, axis = 0)
-
-
-		# Now, let's get transition rules for every one of the inventory things, and the object in front (before/after)
-		# 0; 1, -1
-		# If something else: what object is it dependent on ... what object in inventory equals the thing. Check if it satisfies. 
-		# If there are multiple indices that satisfy the condition, check min(x, y, z)
-
-		rules = []
-		length_set = len(difference_set)
-
-		for item in [7]:
-			difference_thing = difference_set[:, item].copy()
-			unique_items = np.unique(difference_thing)
-			if len(unique_items) == 1:
-				rules.append(unique_items[0])
-			else:
-				what_fits = []
-				for i in range(21):
-					# Criteria 0: one object exists
-					criteria0 = np.array([min(1, prev_inventory_set[k, i]) for k in range(length_set)])
-					for j in range(21):
-						# Criteria 1: two objects exists
-						# Criteria 2: object 1 exists but not object 2
-						# Criteria 3: object 2 exists but not object 1
-						criteria1 = np.array([int((prev_inventory_set[k, i] > 0) and (prev_inventory_set[k, j] > 0)) for k in range(length_set)])
-						criteria2 = np.array([int((prev_inventory_set[k, i] > 0) and (prev_inventory_set[k, j] == 0)) for k in range(length_set)])
-						criteria3 = np.array([int((prev_inventory_set[k, i] == 0) and (prev_inventory_set[k, j] > 0)) for k in range(length_set)])
-						if (difference_thing == criteria1).all():
-							what_fits.append((1, (True, True), i, j))
-						if (difference_thing == -criteria1).all():
-							what_fits.append((-1, (True, True), i, j))
-						if (difference_thing == criteria2).all():
-							what_fits.append((1, (True, False), i, j))
-						if (difference_thing == -criteria2).all():
-							what_fits.append((-1, (True, False), i, j))
-						if (difference_thing == criteria3).all():
-							what_fits.append((1, (False, True), i, j))
-						if (difference_thing == -criteria3).all():
-							what_fits.append((-1, (False, True), i, j))
-					if (difference_thing == criteria0).all():
-						what_fits.append((1, True, i))
-					if (difference_thing == -criteria0).all():
-						what_fits.append((-1, True, i))			
-				if len(what_fits) == 1:
-					rules.append(what_fits[0])
-				else:
-					rules.append(None)
+			transition = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
+			post_inventory_set.append(sss.inventory)
+			prev_inventory_set  = np.append(prev_inventory_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
+			difference_set = np.append(difference_set, transition, axis = 0)
 
 		import ipdb; ipdb.set_trace()
-		agent.rule_list.append((event["object_before"], rules))
+		unique_transitions = np.unique(difference_set, axis = 0)
+		# Get the simplest linearly independent set of transitions
+		key_transitions = []
+		if agent.rule_list.append(event["object_before"], key_transitions):
+			return True
+		else:
+			return False
 
 
 	def convert_to_inventory_format(self, inventory):
@@ -492,7 +452,9 @@ def main():
 	# Initialise agent and rulebook
 	environment_handler = EnvironmentHandler()
 	agent = Agent(environment_handler)
-	environment_handler.train({"object_before": 4}, agent)
+	#for _ in range(3,13):
+	for _ in [4]:
+		environment_handler.train({"object_before": _ }, agent)
 	agent.restart()
 	# Pass the demonstration "online"
 	#for state in demo_model:
