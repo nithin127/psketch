@@ -8,3 +8,4 @@ run.sh.complete
 .ipynb_checkpoints
 slurm*
 job.sh
+*.pk

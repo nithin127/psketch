@@ -466,7 +466,7 @@ def main():
 	# Pick demos
 	#demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
 	#demo_model = [ fullstate(s) for s in demos[0][0] ]
-	for demo in [pickle.load(open("iron_one_demo.pk", "rb"))]:
+	for demo in pickle.load(open("demos.pk", "rb")):
 		num_rules_prev = len(agent.rule_list)
 		demo_model = [ fullstate(s) for s in demo ]
 		# Pass the demonstration "online"
