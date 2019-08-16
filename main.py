@@ -109,7 +109,6 @@ class EnvironmentHandler():
 			inventory = np.random.randint(4, size=21)
 			state_set.append(scenario.init(inventory))
 
-		post_inventory_set = []
 		prev_inventory_set = np.empty((0, 21))
 		difference_set = np.empty((0, 22))
 
@@ -118,15 +117,34 @@ class EnvironmentHandler():
 			# object_in_front_difference should only be -1 or 0, or it is disaster
 			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - ss.grid[5,5].argmax(), -1, 1)
 			transition = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
-			post_inventory_set.append(sss.inventory)
 			prev_inventory_set  = np.append(prev_inventory_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
 			difference_set = np.append(difference_set, transition, axis = 0)
 
-		import ipdb; ipdb.set_trace()
 		unique_transitions = np.unique(difference_set, axis = 0)
-		# Get the simplest linearly independent set of transitions
-		key_transitions = []
-		if agent.rule_list.append(event["object_before"], key_transitions):
+		# We want: the simplest core set of transitions, and the minimum conditions required for them to occur
+		# First we arrange them in the order of simplicity
+		# and find the minimum conditions
+		costs = np.zeros(len(unique_transitions))
+		for i, tr in enumerate(unique_transitions):
+			costs[i] += abs(tr[7:12]).sum()
+			costs[i] += 2*abs(tr[12:]).sum()
+		sorted_indices = costs.argsort()
+		# Now we get the core transitions 
+		core_transitions = np.empty((unique_transitions[0].shape[0], 0))
+		pre_requisite_set = np.empty((0, 21))
+		for ind in sorted_indices:
+			matrix = np.append(np.expand_dims(unique_transitions[ind].copy(), axis=1), core_transitions, axis = 1)
+			if np.linalg.matrix_rank(matrix) == matrix.shape[1]:
+				core_transitions = matrix.copy()
+				# Also find the pre-requisite condition
+				tr_indices = np.where((unique_transitions[ind] == difference_set).all(axis=1))[0]
+				prev_inventory_subset = np.empty((0, 21))
+				for tr_ind in tr_indices:
+					prev_inventory_subset  = np.append(prev_inventory_subset, np.expand_dims(prev_inventory_set[tr_ind], axis=0), axis = 0)
+				pre_requisite = np.min(prev_inventory_subset, axis = 0)
+				pre_requisite_set = np.append(pre_requisite_set, np.expand_dims(pre_requisite, axis = 0), axis = 0)
+
+		if agent.rule_list.append({"object": event["object_before"], "rules": core_transitions.T, "conditions": pre_requisite_set}):
 			return True
 		else:
 			return False
@@ -452,8 +470,8 @@ def main():
 	# Initialise agent and rulebook
 	environment_handler = EnvironmentHandler()
 	agent = Agent(environment_handler)
-	#for _ in range(3,13):
-	for _ in [4]:
+	for _ in range(3,13):
+	#for _ in [4]:
 		environment_handler.train({"object_before": _ }, agent)
 	agent.restart()
 	# Pass the demonstration "online"
@@ -461,8 +479,8 @@ def main():
 	#	agent.next_state(state)
 	#rule_sequence, events = agent.what_happened()
 	#agent.restart()
-	for obj, rule in agent.rule_list: 
-		print("obj:{}, rules:{}\n\n".format(obj,rule))
+	for rule in agent.rule_list: 
+		print("obj:{}\nrules:{}\nconditions:{}\n\n\n\n\n\n".format(rule["object"], rule["rules"], rule["conditions"]))
 	import ipdb; ipdb.set_trace()
 
 
