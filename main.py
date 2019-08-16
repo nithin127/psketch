@@ -69,11 +69,9 @@ number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12:
 			15: "rope", 16: "bed", 17: "shears", 18: "cloth", 19: "bridge", 20: "ladder"}
 
 
-
 class EnvironmentHandler():
 	def __init__(self):
 		# We define the set of environments here
-		self.envs = pickle.load(open("envs.pk", "rb"))
 		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
 				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		self.rule_format = {"object_before": 0, "inventory_before": None, "object_after": 0, "inventory_after": None, \
@@ -404,7 +402,7 @@ class Agent():
 				seq.append(LEFT)
 			elif d == LEFT:
 				seq.append(RIGHT)
-		if seq[-1] == seq[-2]:
+		if len(seq) > 1 and seq[-1] == seq[-2]:
 			return seq[:-1] + [4]
 		else:
 			return seq + [4]
@@ -462,26 +460,26 @@ class Agent():
 
 
 def main():
-	# Pick a demo
-	#demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
-	#demo_model = [ fullstate(s) for s in demos[0][0] ]
-	demo = pickle.load(open("iron_one_demo.pk", "rb"))
-	demo_model = [ fullstate(s) for s in demo ]
 	# Initialise agent and rulebook
 	environment_handler = EnvironmentHandler()
 	agent = Agent(environment_handler)
-	for _ in range(3,13):
-	#for _ in [4]:
-		environment_handler.train({"object_before": _ }, agent)
-	agent.restart()
-	# Pass the demonstration "online"
-	#for state in demo_model:
-	#	agent.next_state(state)
-	#rule_sequence, events = agent.what_happened()
-	#agent.restart()
-	for rule in agent.rule_list: 
-		print("obj:{}\nrules:{}\nconditions:{}\n\n\n\n\n\n".format(rule["object"], rule["rules"], rule["conditions"]))
-	import ipdb; ipdb.set_trace()
+	# Pick demos
+	#demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
+	#demo_model = [ fullstate(s) for s in demos[0][0] ]
+	for demo in [pickle.load(open("iron_one_demo.pk", "rb"))]:
+		num_rules_prev = len(agent.rule_list)
+		demo_model = [ fullstate(s) for s in demo ]
+		# Pass the demonstration "online"
+		for state in demo_model:
+			agent.next_state(state)
+		rule_sequence, events = agent.what_happened()
+		agent.restart()
+		input("{} new rules added. Continue ?".format(len(agent.rule_list) - num_rules_prev))
+		import ipdb; ipdb.set_trace()
+	print("Final set of rules: \n\n".format())
+	for i, rule in enumerate(agent.rule_list): 
+			print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
+		
 
 
 if __name__ == "__main__":
