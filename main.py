@@ -122,14 +122,16 @@ class EnvironmentHandler():
 		# We want: the simplest core set of transitions, and the minimum conditions required for them to occur
 		# First we arrange them in the order of simplicity
 		# and find the minimum conditions
+
 		costs = np.zeros(len(unique_transitions))
 		for i, tr in enumerate(unique_transitions):
 			costs[i] += abs(tr[7:12]).sum()
 			costs[i] += 2*abs(tr[12:]).sum()
 		sorted_indices = costs.argsort()
 		# Now we get the core transitions 
-		core_transitions = np.empty((unique_transitions[0].shape[0], 0))
-		pre_requisite_set = np.empty((0, 21))
+		core_transitions = np.empty((unique_transitions[0].shape[0], 0), dtype = int)
+		pre_requisite_set = np.empty((0, 21), dtype = int)
+		desc_set = []
 		for ind in sorted_indices:
 			matrix = np.append(np.expand_dims(unique_transitions[ind].copy(), axis=1), core_transitions, axis = 1)
 			if np.linalg.matrix_rank(matrix) == matrix.shape[1]:
@@ -141,10 +143,13 @@ class EnvironmentHandler():
 					prev_inventory_subset  = np.append(prev_inventory_subset, np.expand_dims(prev_inventory_set[tr_ind], axis=0), axis = 0)
 				pre_requisite = np.min(prev_inventory_subset, axis = 0)
 				pre_requisite_set = np.append(pre_requisite_set, np.expand_dims(pre_requisite, axis = 0), axis = 0)
+				#import ipdb; ipdb.set_trace()
+				desc_set.append("Yo happened")
 
-		if agent.rule_list.append({"object": event["object_before"], "rules": core_transitions.T, "conditions": pre_requisite_set}):
+		try:
+			agent.rule_list[event["object_before"]] = (core_transitions.T, pre_requisite_set, desc_set)
 			return True
-		else:
+		except:
 			return False
 
 
@@ -166,44 +171,41 @@ class Agent():
 		# Level 3: Agent can see the basic environment usables and workshops distinctly
 		# Agent has a sense of direction, and a basic sense of inventory
 		self.environment_handler = environment_handler
-		self.rule_list = []
-		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
-				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
 		# These things can be replaced by neural networks
 		self.skills = [ self.navigation, self.use_object ]
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
 		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after) ]
-		# Agent's memory
-		self.current_state_sequence = []
-		self.current_segmentation_array = []
-		self.current_prediction_array = []
-		self.current_inventory = self.inventory_format.copy() 
+		# Agent's memory. Permanent to temporary
+		self.rule_list = {}
 		self.rule_sequence = []
 		self.events = []
-
-
-	def reinitialise_current_arrays(self):
+		self.current_inventory = np.zeros(21)
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
-		self.current_inventory = self.inventory_format.copy() 
+
+
+	def restart_segmentation(self):
+		self.current_state_sequence = [self.current_state_sequence[-1]]
+		self.current_segmentation_array = []
+		self.current_prediction_array = []
 
 
 	def restart(self):
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
-		self.current_inventory = self.inventory_format.copy() 
+		self.current_inventory = np.zeros(21)
 		self.rule_sequence = []
 		self.events = []
 
 
 	def next_state(self, state):
 		self.current_state_sequence.append(state)
-		self.predict()
+		self.segment()
 
 
-	def predict(self):
+	def segment(self):
 		preds = []
 		segs = []
 		for i, disc in enumerate(self.discriminators):
@@ -211,65 +213,72 @@ class Agent():
 			preds.append(pred)
 			segs.append(seg)
 		if (sum(segs) == 0):
-			# reinitialise and store concept triggers
-			for segs_i, preds_i in zip(self.current_segmentation_array[::-1], self.current_prediction_array[::-1]):
-				if 1 in segs_i:
-					ind = segs_i.index(1)
-					# Ind is a concept trigger
-					# Give this to concept function and reinitialise
-					event_i = self.describe_actions(ind)
-					self.events.append(event_i)
-					if ind == 0:
-						print("Go to: {}".format(pred))
-					elif ind == 1:
-						print("Use object at {}".format(pred))
-					self.reinitialise_current_arrays()
-					break
+			self.predict()
 		else:
 			self.current_segmentation_array.append(segs)
 			self.current_prediction_array.append(preds)	
 
 
-	def describe_actions(self, ind):
+	def predict(self, final_sequence = False):
+		# reinitialise and store concept triggers
+		for segs_i, preds_i in zip(self.current_segmentation_array[::-1], self.current_prediction_array[::-1]):
+			if 1 in segs_i:
+				ind = segs_i.index(1)
+				# Ind is a concept trigger
+				# Give this to concept function and reinitialise
+				event_i = self.describe_actions(ind, final_sequence)
+				self.events.append(event_i)
+				if ind == 0:
+					print("Go to: {}".format(preds_i[ind]))
+				elif ind == 1:
+					print("Use object at {}".format(preds_i[ind]))
+				self.restart_segmentation()
+				break
+
+
+	def describe_actions(self, ind, final_sequence = False):
 		# Instead of appending state_sequence, append the result of the concept function
 		concepts = {"trigger": ind}
 		for key, c_func in self.concept_functions:
-			concepts[key] = c_func(self.current_state_sequence[-2:])
+			if final_sequence:
+				concepts[key] = c_func(self.current_state_sequence[-2:])
+			else:
+				concepts[key] = c_func(self.current_state_sequence[-3:-1])
 		return concepts
 
 
 	def what_happened(self):
 		# If there are still some unpredicted actions, predict them first
 		if self.current_segmentation_array:
-			segs_i, preds_i = self.current_segmentation_array[-1], self.current_prediction_array[-1]
-			if 1 in segs_i:
-				ind = segs_i.index(1)
-				event_i = self.describe_actions(ind)
-				self.events.append(event_i)
-				if ind == 0:
-					print("Go to: {}".format(preds_i))
-				elif ind == 1:
-					print("Use object at {}".format(preds_i))	
-			else:
-				print("None of the skills have been completely executed")
+			self.predict(True)
 		else:
 			pass
-		self.reinitialise_current_arrays()
+		self.restart_segmentation()
 		# Now let's see what happened in events
 		print("------------------------")
 		print("   Describing events    ")
 		print("------------------------")
 		for ie, event in enumerate(self.events):
-			found = False
-			for ir, (rule, transformation) in enumerate(self.rule_list):
-				if event["object_before"] == rule:
-					self.rule_sequence.append(ir)
-					found = True
-			if not found:
-				print("Rule not found. Training and redoing the thing")
-				self.environment_handler.train(event, self)
-				self.rule_sequence = []
-				_, _ = self.what_happened()
+			if not event["object_before"] in self.rule_list.keys():
+				success = self.environment_handler.train(event, self)
+				if not success:
+					print("Could not find appropriate rules")
+					self.rule_sequence.append(None)
+					continue
+			# Continue execution
+			rules, conditions, desc_set = self.rule_list[event["object_before"]]
+			# Check which the conditions are satisfied. And predict the next set of inventories
+			# Print the possible events that could've taken place, record the event
+			for i, (rule, condition, desc) in enumerate(zip(rules, conditions, desc_set)):
+				rules_executed = []
+				if ((self.current_inventory - condition >= 0).all()) and \
+					((rule[-1] == 0 and event["object_before"] == event["object_after"]) \
+						or (rule[-1] == -1 and event["object_after"] == 0)):
+					self.current_inventory += rule[:-1]
+					print(desc)
+					rules_executed.append(i)
+
+			self.rule_sequence.append((event["object_before"], rules_executed))
 		return self.rule_sequence, self.events
 
 
@@ -475,7 +484,7 @@ def main():
 		rule_sequence, events = agent.what_happened()
 		agent.restart()
 		input("{} new rules added. Continue ?".format(len(agent.rule_list) - num_rules_prev))
-		import ipdb; ipdb.set_trace()
+	import ipdb; ipdb.set_trace()
 	print("Final set of rules: \n\n".format())
 	for i, rule in enumerate(agent.rule_list): 
 			print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
