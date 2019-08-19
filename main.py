@@ -71,24 +71,18 @@ number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12:
 
 class EnvironmentHandler():
 	def __init__(self):
-		# We define the set of environments here
-		self.inventory_format = { "wood": 0, "iron": 0, "grass": 0, "plank": 0, "stick": 0, "axe": 0, \
-				"rope": 0, "bed": 0, "shears": 0, "cloth": 0, "bridge": 0, "ladder": 0, "gem": 0, "gold": 0 }
-		self.rule_format = {"object_before": 0, "inventory_before": None, "object_after": 0, "inventory_after": None, \
-				"text": None}
-
+		self.cw = CraftWorld()
 		
 	def train(self, event, agent):
 		# Replicate the demonstration in different environments
-		cw = CraftWorld()
-		grid = np.zeros((WIDTH, HEIGHT, cw.cookbook.n_kinds))
-		i_bd = cw.cookbook.index["boundary"]
+		grid = np.zeros((WIDTH, HEIGHT, self.cw.cookbook.n_kinds))
+		i_bd = self.cw.cookbook.index["boundary"]
 		grid[0, :, i_bd] = 1
 		grid[WIDTH-1:, :, i_bd] = 1
 		grid[:, 0, i_bd] = 1
 		grid[:, HEIGHT-1:, i_bd] = 1
-		grid[5, 5, cw.cookbook.index[num_string_dict[event["object_before"]]]] = 1
-		scenario = CraftScenario(grid, (5,6), cw)
+		grid[5, 5, self.cw.cookbook.index[num_string_dict[event["object_before"]]]] = 1
+		scenario = CraftScenario(grid, (5,6), self.cw)
 		# "dataset"
 		state_set = []
 		for i in range(7,21):
@@ -133,7 +127,7 @@ class EnvironmentHandler():
 		pre_requisite_set = np.empty((0, 21), dtype = int)
 		desc_set = []
 		for ind in sorted_indices:
-			matrix = np.append(np.expand_dims(unique_transitions[ind].copy(), axis=1), core_transitions, axis = 1)
+			matrix = np.append(core_transitions, np.expand_dims(unique_transitions[ind].copy(), axis=1), axis = 1)
 			if np.linalg.matrix_rank(matrix) == matrix.shape[1]:
 				core_transitions = matrix.copy()
 				# Also find the pre-requisite condition
@@ -143,24 +137,40 @@ class EnvironmentHandler():
 					prev_inventory_subset  = np.append(prev_inventory_subset, np.expand_dims(prev_inventory_set[tr_ind], axis=0), axis = 0)
 				pre_requisite = np.min(prev_inventory_subset, axis = 0)
 				pre_requisite_set = np.append(pre_requisite_set, np.expand_dims(pre_requisite, axis = 0), axis = 0)
-				#import ipdb; ipdb.set_trace()
-				desc_set.append("Yo happened")
+				# Coming up with the description of the event
+				objs_gathered = np.where(unique_transitions[ind] == 1)[0]
+				objs_used_up = np.where(unique_transitions[ind][:-1] == -1)[0]
+				text_gathered = ""
+				text_used_up = ""
+				for obj in objs_gathered:
+					#import ipdb; ipdb.set_trace()
+					text_gathered += number_inventory[obj] + ", "
+				for obj in objs_used_up:
+					text_used_up += number_inventory[obj] + ", "
+				if len(text_gathered) > 0: 
+					text_gathered = text_gathered[:-2] 
+				else: 
+					text_gathered = None
+				if len(text_used_up) > 0: 
+					text_used_up = text_used_up[:-2]
+				else: 
+					text_used_up = None
+				# Now for the description
+				if unique_transitions[ind][-1] == -1:
+					if text_gathered:
+						desc_set.append("Got: {}. Used up: {}".format(text_gathered, text_used_up))
+					else:
+						desc_set.append("Removed {} from the environment. Used up: {}".\
+							format(num_string_dict[event["object_before"]], text_used_up))
+				else:
+					desc_set.append("Used {} to make {} at {}".\
+						format(text_used_up, text_gathered, num_string_dict[event["object_before"]]))
 
 		try:
 			agent.rule_list[event["object_before"]] = (core_transitions.T, pre_requisite_set, desc_set)
 			return True
 		except:
 			return False
-
-
-	def convert_to_inventory_format(self, inventory):
-		formatted_inventory = self.inventory_format.copy()
-		items = ["iron", "grass", "wood", "gold", "gem", "plank", "stick", "axe", "rope", "bed", \
-			"shears", "cloth", "bridge", "ladder"]
-		for i, item in enumerate(items):
-			formatted_inventory[item] = int(inventory[i+7])
-		return formatted_inventory
-
 
 
 # --------------------------------------- Agent Function -------------------------------------- #
@@ -277,8 +287,8 @@ class Agent():
 					self.current_inventory += rule[:-1]
 					print(desc)
 					rules_executed.append(i)
-
 			self.rule_sequence.append((event["object_before"], rules_executed))
+		print("------------------------")
 		return self.rule_sequence, self.events
 
 
