@@ -167,10 +167,76 @@ class EnvironmentHandler():
 						format(text_used_up, text_gathered, num_string_dict[event["object_before"]]))
 
 		try:
-			agent.rule_list[event["object_before"]] = (core_transitions.T, pre_requisite_set, desc_set)
+			agent.rule_dict[event["object_before"]] = (core_transitions.T, pre_requisite_set, desc_set)
 			return True
 		except:
 			return False
+
+
+
+class EventEncoderGraph():
+	def __init__(self):
+		self.event_table = np.empty((0, 23)) # 21 is the inventory assumption array, 22 is rank, 23 is index
+		self.start_node = EventNode()
+		self.event_nodes = [ self.start_node ]
+		self.index = 1
+		self.initial_inventory_assumption = np.zeros(21)
+
+
+	def add_node(self, new_node, condition, transition):
+		self.event_nodes.append(new_node)
+		if condition.sum() == 0:
+			self.start_node.post_links.append(new_node)
+			new_node.prev_links.append(self.start_node)
+			node_availability = transition.clip(0)
+			# assert(node_availability == transition)
+			index = self.index
+			self.index += 1
+			value = node_availability.sum() + index*0.01 + sum([prev_node.value for prev_node in new_node.prev_links])
+			new_node.value = value
+			table_entry = np.expand_dims(np.append(node_availability, np.array([value, index])), axis = 0)
+			self.event_table = np.append(self.event_table, table_entry, axis = 0)
+		else:
+			# Keep on going. One by one
+			inds = self.event_table[:, 22]
+			required_objects = set(np.where(condition != 0)[0])
+			# Making a shortcut, we know the number of each unique object is one in this case
+			# To. Do. Come up with a more general method
+			for i, ind in enumerate(inds):
+				available_objects = np.where(self.event_table[i][:21] != 0)[0]
+				import ipdb; ipdb.set_trace()
+				intersection = set(available_objects) & required_objects
+				if not intersection:
+					continue
+				else:
+					for obj in intersection:
+						# Here is the major assumption that the number of object exchange is 1
+						self.event_table[i][obj] -= 1
+					required_objects -= intersection
+					self.event_nodes[ind].post_links = new_node
+					new_node.prev_links = self.event_nodes[ind]
+			if required_objects:
+				for obj in required_objects:
+					# Here is the major assumption that the number of object exchange is 1
+					self.initial_inventory_assumption[obj] += 1
+				
+		self.reorganise_table()
+
+
+	def reorganise_table(self):
+		# Remove guys with no availability
+		# Arrange the columns in ascending order of values
+		pass
+
+
+class EventNode():
+	def __init__(self):
+		self.name = "New Node"
+		self.prev_links = []
+		self.post_links = []
+		self.details = None
+		self.value = 0
+
 
 
 # --------------------------------------- Agent Function -------------------------------------- #
@@ -186,7 +252,7 @@ class Agent():
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
 		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after) ]
 		# Agent's memory. Permanent to temporary
-		self.rule_list = {}
+		self.rule_dict = {}
 		self.rule_sequence = []
 		self.events = []
 		self.current_inventory = np.zeros(21)
@@ -257,7 +323,7 @@ class Agent():
 		return concepts
 
 
-	def what_happened(self):
+	def what_happened(self, make_graph = False):
 		# If there are still some unpredicted actions, predict them first
 		if self.current_segmentation_array:
 			self.predict(True)
@@ -269,14 +335,14 @@ class Agent():
 		print("   Describing events    ")
 		print("------------------------")
 		for ie, event in enumerate(self.events):
-			if not event["object_before"] in self.rule_list.keys():
+			if not event["object_before"] in self.rule_dict.keys():
 				success = self.environment_handler.train(event, self)
 				if not success:
 					print("Could not find appropriate rules")
 					self.rule_sequence.append(None)
 					continue
 			# Continue execution
-			rules, conditions, desc_set = self.rule_list[event["object_before"]]
+			rules, conditions, desc_set = self.rule_dict[event["object_before"]]
 			# Check which the conditions are satisfied. And predict the next set of inventories
 			# Print the possible events that could've taken place, record the event
 			for i, (rule, condition, desc) in enumerate(zip(rules, conditions, desc_set)):
@@ -289,6 +355,23 @@ class Agent():
 					rules_executed.append(i)
 			self.rule_sequence.append((event["object_before"], rules_executed))
 		print("------------------------")
+		if make_graph:
+			graph = EventEncoderGraph()
+			for i, (event, rules) in enumerate(zip(self.events, self.rule_sequence)):
+				key = rules[0]
+				for rule in rules[1]:
+					transition = self.rule_dict[key][0][rule]
+					condition = self.rule_dict[key][1][rule]
+					name = self.rule_dict[key][2][rule]
+					# Non observable transition
+					inventory_transition = transition[:-1]
+					# Let's create and fill up the node
+					new_node = EventNode()
+					new_node.details = [key, rule]
+					new_node.name = name
+					print("Conditions Sum: {}".format(condition.sum()))
+					graph.add_node(new_node, condition, inventory_transition)
+
 		return self.rule_sequence, self.events
 
 
@@ -486,17 +569,17 @@ def main():
 	#demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
 	#demo_model = [ fullstate(s) for s in demos[0][0] ]
 	for demo in pickle.load(open("demos.pk", "rb")):
-		num_rules_prev = len(agent.rule_list)
+		num_rules_prev = len(agent.rule_dict)
 		demo_model = [ fullstate(s) for s in demo ]
 		# Pass the demonstration "online"
 		for state in demo_model:
 			agent.next_state(state)
-		rule_sequence, events = agent.what_happened()
+		rule_sequence, events = agent.what_happened(make_graph = True)
 		agent.restart()
-		input("{} new rules added. Continue ?".format(len(agent.rule_list) - num_rules_prev))
+		input("{} new rules added. Continue ?".format(len(agent.rule_dict) - num_rules_prev))
 	import ipdb; ipdb.set_trace()
 	print("Final set of rules: \n\n".format())
-	for i, rule in enumerate(agent.rule_list): 
+	for i, rule in enumerate(agent.rule_dict): 
 			print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
 		
 
