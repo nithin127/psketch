@@ -143,7 +143,6 @@ class EnvironmentHandler():
 				text_gathered = ""
 				text_used_up = ""
 				for obj in objs_gathered:
-					#import ipdb; ipdb.set_trace()
 					text_gathered += number_inventory[obj] + ", "
 				for obj in objs_used_up:
 					text_used_up += number_inventory[obj] + ", "
@@ -178,6 +177,7 @@ class EventEncoderGraph():
 	def __init__(self):
 		self.event_table = np.empty((0, 23)) # 21 is the inventory assumption array, 22 is rank, 23 is index
 		self.start_node = EventNode()
+		self.start_node.name = "Start Node"
 		self.event_nodes = [ self.start_node ]
 		self.index = 1
 		self.initial_inventory_assumption = np.zeros(21)
@@ -188,14 +188,6 @@ class EventEncoderGraph():
 		if condition.sum() == 0:
 			self.start_node.post_links.append(new_node)
 			new_node.prev_links.append(self.start_node)
-			node_availability = transition.clip(0)
-			# assert(node_availability == transition)
-			index = self.index
-			self.index += 1
-			value = node_availability.sum() + index*0.01 + sum([prev_node.value for prev_node in new_node.prev_links])
-			new_node.value = value
-			table_entry = np.expand_dims(np.append(node_availability, np.array([value, index])), axis = 0)
-			self.event_table = np.append(self.event_table, table_entry, axis = 0)
 		else:
 			# Keep on going. One by one
 			inds = self.event_table[:, 22]
@@ -204,7 +196,6 @@ class EventEncoderGraph():
 			# To. Do. Come up with a more general method
 			for i, ind in enumerate(inds):
 				available_objects = np.where(self.event_table[i][:21] != 0)[0]
-				import ipdb; ipdb.set_trace()
 				intersection = set(available_objects) & required_objects
 				if not intersection:
 					continue
@@ -213,20 +204,38 @@ class EventEncoderGraph():
 						# Here is the major assumption that the number of object exchange is 1
 						self.event_table[i][obj] -= 1
 					required_objects -= intersection
-					self.event_nodes[ind].post_links = new_node
-					new_node.prev_links = self.event_nodes[ind]
+					self.event_nodes[int(ind)].post_links.append(new_node)
+					new_node.prev_links.append(self.event_nodes[int(ind)])
 			if required_objects:
 				for obj in required_objects:
 					# Here is the major assumption that the number of object exchange is 1
 					self.initial_inventory_assumption[obj] += 1
-				
+		index = self.index
+		self.index += 1
+		node_availability = transition.clip(0)
+		value = node_availability.sum() + index*0.01 + sum([prev_node.value for prev_node in new_node.prev_links])
+		new_node.value = value
+		table_entry = np.expand_dims(np.append(node_availability, np.array([value, index])), axis = 0)
+		self.event_table = np.append(self.event_table, table_entry, axis = 0)
 		self.reorganise_table()
 
 
 	def reorganise_table(self):
-		# Remove guys with no availability
+		# Remove nodes with no availability
+		self.event_table = np.delete(self.event_table, np.where(self.event_table[:,:21].sum(axis=1) == 0)[0], 0)
 		# Arrange the columns in ascending order of values
-		pass
+		sorted_args = self.event_table[:,-2].argsort()
+		self.event_table = self.event_table[sorted_args]
+
+
+	def print(self):
+		print("Haven't written down the functions")
+
+	def leafs(self):
+		leaf_nodes = []
+		for node in self.event_nodes:
+			if len(node.post_links) == 0: leaf_nodes.append(node)
+		return leaf_nodes
 
 
 class EventNode():
@@ -255,6 +264,7 @@ class Agent():
 		self.rule_dict = {}
 		self.rule_sequence = []
 		self.events = []
+		self.graph = None
 		self.current_inventory = np.zeros(21)
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
@@ -274,6 +284,7 @@ class Agent():
 		self.current_inventory = np.zeros(21)
 		self.rule_sequence = []
 		self.events = []
+		self.graph = None
 
 
 	def next_state(self, state):
@@ -337,6 +348,7 @@ class Agent():
 		for ie, event in enumerate(self.events):
 			if not event["object_before"] in self.rule_dict.keys():
 				success = self.environment_handler.train(event, self)
+				print("Training agent for event {}".format(event))
 				if not success:
 					print("Could not find appropriate rules")
 					self.rule_sequence.append(None)
@@ -345,18 +357,18 @@ class Agent():
 			rules, conditions, desc_set = self.rule_dict[event["object_before"]]
 			# Check which the conditions are satisfied. And predict the next set of inventories
 			# Print the possible events that could've taken place, record the event
+			rules_executed = []
 			for i, (rule, condition, desc) in enumerate(zip(rules, conditions, desc_set)):
-				rules_executed = []
 				if ((self.current_inventory - condition >= 0).all()) and \
 					((rule[-1] == 0 and event["object_before"] == event["object_after"]) \
 						or (rule[-1] == -1 and event["object_after"] == 0)):
 					self.current_inventory += rule[:-1]
-					print(desc)
+					print("== Event == {}".format(desc))
 					rules_executed.append(i)
 			self.rule_sequence.append((event["object_before"], rules_executed))
 		print("------------------------")
 		if make_graph:
-			graph = EventEncoderGraph()
+			self.graph = EventEncoderGraph()
 			for i, (event, rules) in enumerate(zip(self.events, self.rule_sequence)):
 				key = rules[0]
 				for rule in rules[1]:
@@ -369,10 +381,9 @@ class Agent():
 					new_node = EventNode()
 					new_node.details = [key, rule]
 					new_node.name = name
-					print("Conditions Sum: {}".format(condition.sum()))
-					graph.add_node(new_node, condition, inventory_transition)
-
-		return self.rule_sequence, self.events
+					self.graph.add_node(new_node, condition, inventory_transition)
+			
+		return self.rule_sequence, self.events, self.graph
 
 
 	def observation_function(self, s):
@@ -574,13 +585,15 @@ def main():
 		# Pass the demonstration "online"
 		for state in demo_model:
 			agent.next_state(state)
-		rule_sequence, events = agent.what_happened(make_graph = True)
+		rule_sequence, events, graph = agent.what_happened(make_graph = True)
 		agent.restart()
-		input("{} new rules added. Continue ?".format(len(agent.rule_dict) - num_rules_prev))
+		# We need to print graph here
+		input("{} new rules added\nEvent to replicate in demo: {}\nContinue ?".\
+			format(len(agent.rule_dict) - num_rules_prev, [leaf.name for leaf in graph.leafs()]))
+	#print("Final set of rules: \n\n".format())
+	#for i, rule in enumerate(agent.rule_dict): 
+	#		print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
 	import ipdb; ipdb.set_trace()
-	print("Final set of rules: \n\n".format())
-	for i, rule in enumerate(agent.rule_dict): 
-			print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
 		
 
 
