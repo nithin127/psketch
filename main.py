@@ -202,7 +202,8 @@ class EventEncoderGraph():
 				else:
 					for obj in intersection:
 						# Here is the major assumption that the number of object exchange is 1
-						self.event_table[i][obj] -= 1
+						# Check the generality of these statements
+						self.event_table[i][obj] += transition[obj]
 					required_objects -= intersection
 					self.event_nodes[int(ind)].post_links.append(new_node)
 					new_node.prev_links.append(self.event_nodes[int(ind)])
@@ -231,11 +232,15 @@ class EventEncoderGraph():
 	def print(self):
 		print("Haven't written down the functions")
 
-	def leafs(self):
-		leaf_nodes = []
+	def key_events(self):
+		# Key events are the ones which weren't used to ensure any other event's occurence and
+		# ones which can be re-used again
+		nodes = []
+		for ind in self.event_table[:,-1]:
+			nodes.append(self.event_nodes[int(ind)])
 		for node in self.event_nodes:
-			if len(node.post_links) == 0: leaf_nodes.append(node)
-		return leaf_nodes
+			if len(node.post_links) == 0: nodes.append(node)
+		return set(nodes)
 
 
 class EventNode():
@@ -263,6 +268,7 @@ class Agent():
 		# Agent's memory. Permanent to temporary
 		self.rule_dict = {}
 		self.rule_sequence = []
+		self.object_reachability_set = []
 		self.events = []
 		self.graph = None
 		self.current_inventory = np.zeros(21)
@@ -288,6 +294,9 @@ class Agent():
 
 
 	def next_state(self, state):
+		if object_reachability_set == []:
+			# Fill up the functions here
+			pass
 		self.current_state_sequence.append(state)
 		self.segment()
 
@@ -365,23 +374,21 @@ class Agent():
 					self.current_inventory += rule[:-1]
 					print("== Event == {}".format(desc))
 					rules_executed.append(i)
-			self.rule_sequence.append((event["object_before"], rules_executed))
+			self.rule_sequence += [(event["object_before"], rule) for rule in rules_executed]
 		print("------------------------")
 		if make_graph:
 			self.graph = EventEncoderGraph()
-			for i, (event, rules) in enumerate(zip(self.events, self.rule_sequence)):
-				key = rules[0]
-				for rule in rules[1]:
-					transition = self.rule_dict[key][0][rule]
-					condition = self.rule_dict[key][1][rule]
-					name = self.rule_dict[key][2][rule]
-					# Non observable transition
-					inventory_transition = transition[:-1]
-					# Let's create and fill up the node
-					new_node = EventNode()
-					new_node.details = [key, rule]
-					new_node.name = name
-					self.graph.add_node(new_node, condition, inventory_transition)
+			for i, (event, rule) in enumerate(zip(self.events, self.rule_sequence)):
+				transition = self.rule_dict[rule[0]][0][rule[1]]
+				condition = self.rule_dict[rule[0]][1][rule[1]]
+				name = self.rule_dict[rule[0]][2][rule[1]]
+				# Non observable transition
+				inventory_transition = transition[:-1]
+				# Let's create and fill up the node
+				new_node = EventNode()
+				new_node.details = rule
+				new_node.name = name
+				self.graph.add_node(new_node, condition, inventory_transition)
 			
 		return self.rule_sequence, self.events, self.graph
 
@@ -579,19 +586,20 @@ def main():
 	# Pick demos
 	#demos = pickle.load(open("../data_psketch/demo_dict.pk", "rb"))
 	#demo_model = [ fullstate(s) for s in demos[0][0] ]
-	for demo in pickle.load(open("demos.pk", "rb")):
+	for demo in [pickle.load(open("demos.pk", "rb"))[-1]]:
 		num_rules_prev = len(agent.rule_dict)
 		demo_model = [ fullstate(s) for s in demo ]
 		# Pass the demonstration "online"
 		for state in demo_model:
 			agent.next_state(state)
 		rule_sequence, events, graph = agent.what_happened(make_graph = True)
-		agent.restart()
 		# We need to print graph here
 		input("{} new rules added\nEvent to replicate in demo: {}\nContinue ?".\
-			format(len(agent.rule_dict) - num_rules_prev, [leaf.name for leaf in graph.leafs()]))
+			format(len(agent.rule_dict) - num_rules_prev, [event.name for event in graph.key_events()]))
+		import ipdb; ipdb.set_trace()
+		agent.restart()
 	#print("Final set of rules: \n\n".format())
-	#for i, rule in enumerate(agent.rule_dict): 
+	#for i, rule in enumerate(agent.rule_dict):
 	#		print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
 	import ipdb; ipdb.set_trace()
 		
