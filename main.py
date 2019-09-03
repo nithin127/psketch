@@ -294,9 +294,8 @@ class Agent():
 
 
 	def next_state(self, state):
-		if object_reachability_set == []:
-			# Fill up the functions here
-			pass
+		if self.object_reachability_set == []:
+			self.get_reachable_object_list(state)
 		self.current_state_sequence.append(state)
 		self.segment()
 
@@ -423,6 +422,34 @@ class Agent():
 		final_s[np.where(s[:,:,11] == 1)] = 1
 		final_s[np.where(s[:,:,11] == -1)] += -0.5
 		return final_s
+
+
+	def get_reachable_object_list(self, state):
+		reachability_set = {}
+		for key in string_num_dict.keys():
+			reachability_set[key]  = []
+		world = self.observation_function(state)
+		start = np.where(world == 1)
+		# Dijsktra logic
+		cost_map = np.inf*np.ones(world.shape)
+		dir_map = np.zeros(world.shape)
+		cost_map[start[0],start[1]] = 0
+		to_visit = []
+		to_visit.append(start)
+		while len(to_visit) > 0:
+			curr = to_visit.pop(0)
+			for nx, ny, d in find_neighbors(curr, None):
+				if world[nx, ny] > 2:
+					if (nx[0],ny[0]) not in reachability_set[num_string_dict[int(world[nx, ny][0])]]:
+						reachability_set[num_string_dict[int(world[nx, ny][0])]].append((nx[0], ny[0]))
+				cost = cost_map[curr[0],curr[1]] + 1
+				if cost < cost_map[nx,ny]:
+					if world[nx, ny] == 0:
+						to_visit.append((nx, ny))
+					dir_map[nx,ny] = d
+					cost_map[nx,ny] = cost
+		import ipdb; ipdb.set_trace()
+		return reachability_set
 
 
 	def navigation(self, world, start, goal, free_space_id = 0, agent_id = 1, obstacle_id = 2):
@@ -596,7 +623,6 @@ def main():
 		# We need to print graph here
 		input("{} new rules added\nEvent to replicate in demo: {}\nContinue ?".\
 			format(len(agent.rule_dict) - num_rules_prev, [event.name for event in graph.key_events()]))
-		import ipdb; ipdb.set_trace()
 		agent.restart()
 	#print("Final set of rules: \n\n".format())
 	#for i, rule in enumerate(agent.rule_dict):
