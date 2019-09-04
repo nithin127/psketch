@@ -174,63 +174,61 @@ class EnvironmentHandler():
 
 
 class EventEncoderGraph():
-	def __init__(self):
-		self.event_table = np.empty((0, 23)) # 21 is the inventory assumption array, 22 is rank, 23 is index
-		self.start_node = EventNode()
-		self.start_node.name = "Start Node"
-		self.event_nodes = [ self.start_node ]
-		self.index = 1
+	def __init__(self, agent):
+		self.agent = agent
 		self.initial_inventory_assumption = np.zeros(21)
+		self.current_inventory_availability = np.zeros(21)
+		self.object_reachability_set_initial = agent.object_reachability_set_initial
 
 
-	def add_node(self, new_node, condition, transition):
-		self.event_nodes.append(new_node)
-		if condition.sum() == 0:
-			self.start_node.post_links.append(new_node)
-			new_node.prev_links.append(self.start_node)
-		else:
-			# Keep on going. One by one
-			inds = self.event_table[:, 22]
-			required_objects = set(np.where(condition != 0)[0])
-			# Making a shortcut, we know the number of each unique object is one in this case
-			# To. Do. Come up with a more general method
-			for i, ind in enumerate(inds):
-				available_objects = np.where(self.event_table[i][:21] != 0)[0]
-				intersection = set(available_objects) & required_objects
-				if not intersection:
-					continue
+	def do_stuff(self):
+		event_parent_index_chart = [None]*len(self.agent.events)
+		event_possibility_chart = np.zeros(len(self.agent.events))
+		object_reachability_chart = np.zeros(len(self.agent.events))
+		rule_conditions = np.zeros((len(self.agent.events), 21))
+		for i, rules in enumerate(self.agent.rule_sequence):
+			rule_conditions[i] = self.agent.rule_dict[rules[0]][1][rules[1]].copy()
+		# Put reachability conditions here
+
+
+		for it in range(len(event_availability_chart)):
+			if self.agent.events[it]["event_location"] in self.agent.object_reachability_set_initial:
+				object_reachability_chart[it] = 1
+			if (rule_conditions[it] <= self.current_inventory_availability).all():
+				event_possibility_chart[it] = 1
+			if object_reachability_chart[it] and event_possibility_chart[it]:
+				event_parent_index_chart[it] = -1 # This event was already doable
+
+
+		for i, event, r_condition in enumerate(self.agent.events, self.agent.rule_sequence):
+			key = r_condition[0]
+			rule_number = r_condition[1]
+			transition = self.agent.rule_dict[key][0][rule_number]
+			condition = self.agent.rule_dict[key][1][rule_number]
+			name = self.agent.rule_dict[key][2][rule_number]
+
+			assert(object_reachability_chart[i] == 1)
+			if not event_possibility_chart[i] == 1:
+				whats_missing = -(self.current_inventory_availability - condition).clip(-1000, 0)
+				self.initial_inventory_assumption += whats_missing
+				self.current_inventory_availability += whats_missing
+
+			self.current_inventory_availability += transition
+
+			for it in range(i+1, len(event_availability_chart)):
+				if not object_reachability_chart[it]: 
+					if self.agent.events[it]["event_location"] in self.agent.events[i]["new_reachable_objects"]:
+						object_reachability_chart[it] = 1
+				if (rule_conditions[it] <= self.current_inventory_availability).all():
+					event_possibility_chart[it] = 1
 				else:
-					for obj in intersection:
-						# Here is the major assumption that the number of object exchange is 1
-						# Check the generality of these statements
-						self.event_table[i][obj] += transition[obj]
-					required_objects -= intersection
-					self.event_nodes[int(ind)].post_links.append(new_node)
-					new_node.prev_links.append(self.event_nodes[int(ind)])
-			if required_objects:
-				for obj in required_objects:
-					# Here is the major assumption that the number of object exchange is 1
-					self.initial_inventory_assumption[obj] += 1
-		index = self.index
-		self.index += 1
-		node_availability = transition.clip(0)
-		value = node_availability.sum() + index*0.01 + sum([prev_node.value for prev_node in new_node.prev_links])
-		new_node.value = value
-		table_entry = np.expand_dims(np.append(node_availability, np.array([value, index])), axis = 0)
-		self.event_table = np.append(self.event_table, table_entry, axis = 0)
-		self.reorganise_table()
+					event_possibility_chart[it] = 0
+				if object_reachability_chart[it] and event_possibility_chart[it]:
+					event_parent_index_chart[it] = i # This event was already doable
+				else:
+					event_parent_index_chart[it] = None
 
-
-	def reorganise_table(self):
-		# Remove nodes with no availability
-		self.event_table = np.delete(self.event_table, np.where(self.event_table[:,:21].sum(axis=1) == 0)[0], 0)
-		# Arrange the columns in ascending order of values
-		sorted_args = self.event_table[:,-2].argsort()
-		self.event_table = self.event_table[sorted_args]
-
-
-	def print(self):
-		print("Haven't written down the functions")
+		import ipdb; ipdb.set_trace()
 
 
 	def key_events(self):
@@ -242,27 +240,6 @@ class EventEncoderGraph():
 		for node in self.event_nodes:
 			if len(node.post_links) == 0: nodes.append(node)
 		return set(nodes)
-
-
-	def independent_events(self):
-		# Key events are the ones which weren't used to ensure any other event's occurence and
-		# ones which can be re-used again
-		nodes = []
-		for ind in self.event_table[:,-1]:
-			nodes.append(self.event_nodes[int(ind)])
-		for node in self.event_nodes:
-			if len(node.post_links) == 0: nodes.append(node)
-		return set(nodes)
-
-
-
-class EventNode():
-	def __init__(self):
-		self.name = "New Node"
-		self.prev_links = []
-		self.post_links = []
-		self.details = None
-		self.value = 0
 
 
 
@@ -392,19 +369,8 @@ class Agent():
 			self.rule_sequence += [(event["object_before"], rule) for rule in rules_executed]
 		print("------------------------")
 		if make_graph:
-			self.graph = EventEncoderGraph()
-			for i, (event, rule) in enumerate(zip(self.events, self.rule_sequence)):
-				transition = self.rule_dict[rule[0]][0][rule[1]]
-				condition = self.rule_dict[rule[0]][1][rule[1]]
-				name = self.rule_dict[rule[0]][2][rule[1]]
-				# Non observable transition
-				inventory_transition = transition[:-1]
-				# Let's create and fill up the node
-				new_node = EventNode()
-				new_node.details = rule
-				new_node.name = name
-				self.graph.add_node(new_node, condition, inventory_transition)
-			
+			self.graph = EventEncoderGraph(self)
+			self.graph.do_stuff()
 		return self.rule_sequence, self.events, self.graph
 
 
@@ -642,8 +608,6 @@ def main():
 		# We need to print graph here
 		input("{} new rules added\n Key Events in demo: {}\nContinue ?".\
 			format(len(agent.rule_dict) - num_rules_prev, [event.name for event in graph.key_events()]))
-		input("{} new rules added\n Independent Events in demo: {}\nContinue ?".\
-			format(len(agent.rule_dict) - num_rules_prev, [event.name for event in graph.independent_events()]))
 		import ipdb; ipdb.set_trace()
 		agent.restart()
 	#print("Final set of rules: \n\n".format())
