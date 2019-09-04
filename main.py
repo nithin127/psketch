@@ -232,6 +232,7 @@ class EventEncoderGraph():
 	def print(self):
 		print("Haven't written down the functions")
 
+
 	def key_events(self):
 		# Key events are the ones which weren't used to ensure any other event's occurence and
 		# ones which can be re-used again
@@ -241,6 +242,18 @@ class EventEncoderGraph():
 		for node in self.event_nodes:
 			if len(node.post_links) == 0: nodes.append(node)
 		return set(nodes)
+
+
+	def independent_events(self):
+		# Key events are the ones which weren't used to ensure any other event's occurence and
+		# ones which can be re-used again
+		nodes = []
+		for ind in self.event_table[:,-1]:
+			nodes.append(self.event_nodes[int(ind)])
+		for node in self.event_nodes:
+			if len(node.post_links) == 0: nodes.append(node)
+		return set(nodes)
+
 
 
 class EventNode():
@@ -264,11 +277,13 @@ class Agent():
 		# These things can be replaced by neural networks
 		self.skills = [ self.navigation, self.use_object ]
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
-		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after) ]
+		self.concept_functions = [ ("object_before", self.object_in_front_before), ("object_after", self.object_in_front_after), \
+		("new_reachable_objects", self.new_reachable_objects), ("event_location", self.event_location) ]
 		# Agent's memory. Permanent to temporary
 		self.rule_dict = {}
 		self.rule_sequence = []
-		self.object_reachability_set = []
+		self.object_reachability_set_initial = []
+		self.object_reachability_set_current = []
 		self.events = []
 		self.graph = None
 		self.current_inventory = np.zeros(21)
@@ -294,8 +309,9 @@ class Agent():
 
 
 	def next_state(self, state):
-		if self.object_reachability_set == []:
-			self.get_reachable_object_list(state)
+		if self.object_reachability_set_initial == []:
+			self.object_reachability_set_current = self.update_reachable_object_list(state)
+			self.object_reachability_set_initial = self.object_reachability_set_current.copy()
 		self.current_state_sequence.append(state)
 		self.segment()
 
@@ -424,10 +440,7 @@ class Agent():
 		return final_s
 
 
-	def get_reachable_object_list(self, state):
-		reachability_set = {}
-		for key in string_num_dict.keys():
-			reachability_set[key]  = []
+	def update_reachable_object_list(self, state):
 		world = self.observation_function(state)
 		start = np.where(world == 1)
 		# Dijsktra logic
@@ -436,20 +449,21 @@ class Agent():
 		cost_map[start[0],start[1]] = 0
 		to_visit = []
 		to_visit.append(start)
+		new_guys = []
 		while len(to_visit) > 0:
 			curr = to_visit.pop(0)
 			for nx, ny, d in find_neighbors(curr, None):
 				if world[nx, ny] > 2:
-					if (nx[0],ny[0]) not in reachability_set[num_string_dict[int(world[nx, ny][0])]]:
-						reachability_set[num_string_dict[int(world[nx, ny][0])]].append((nx[0], ny[0]))
+					if (nx[0],ny[0]) not in self.object_reachability_set_current:
+						self.object_reachability_set_current.append((nx[0], ny[0]))
+						new_guys.append((nx[0], ny[0]))
 				cost = cost_map[curr[0],curr[1]] + 1
 				if cost < cost_map[nx,ny]:
-					if world[nx, ny] == 0:
+					if world[nx, ny] == 0 or world[nx, ny] == -0.5:
 						to_visit.append((nx, ny))
 					dir_map[nx,ny] = d
 					cost_map[nx,ny] = cost
-		import ipdb; ipdb.set_trace()
-		return reachability_set
+		return new_guys
 
 
 	def navigation(self, world, start, goal, free_space_id = 0, agent_id = 1, obstacle_id = 2):
@@ -600,9 +614,14 @@ class Agent():
 		return int((state_obs2[direction2] + 0.5)[0])
 
 
-	def current_position(self, states):
+	def event_location(self, states):
 		state_obs2 = self.observation_function(states[1])
-		return np.where(state_obs2 == 1)
+		direction2 = np.where((state_obs2 + 0.5) % 1 == 0)
+		return (direction2[0][0], direction2[1][0])
+
+
+	def new_reachable_objects(self, states):
+		return self.update_reachable_object_list(states[-1])
 
 
 
@@ -621,8 +640,11 @@ def main():
 			agent.next_state(state)
 		rule_sequence, events, graph = agent.what_happened(make_graph = True)
 		# We need to print graph here
-		input("{} new rules added\nEvent to replicate in demo: {}\nContinue ?".\
+		input("{} new rules added\n Key Events in demo: {}\nContinue ?".\
 			format(len(agent.rule_dict) - num_rules_prev, [event.name for event in graph.key_events()]))
+		input("{} new rules added\n Independent Events in demo: {}\nContinue ?".\
+			format(len(agent.rule_dict) - num_rules_prev, [event.name for event in graph.independent_events()]))
+		import ipdb; ipdb.set_trace()
 		agent.restart()
 	#print("Final set of rules: \n\n".format())
 	#for i, rule in enumerate(agent.rule_dict):
