@@ -72,6 +72,12 @@ number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12:
 class EnvironmentHandler():
 	def __init__(self):
 		self.cw = CraftWorld()
+
+	def get_env(self):
+		goal = np.random.randint(14) + 7
+		scenario = self.cw.sample_scenario_with_goal(goal)
+		# Assuming no initial inventory
+		return scenario.init()
 		
 	def train(self, event, agent):
 		# Replicate the demonstration in different environments
@@ -178,11 +184,13 @@ class EventEncoderGraph():
 		self.agent = agent
 		self.initial_inventory_assumption = np.zeros(21)
 		self.current_inventory_availability = np.zeros(21)
+		self.current_availability_matrix = [[]]*21
 		self.object_reachability_set_initial = agent.object_reachability_set_initial
 
 
 	def do_stuff(self):
-		event_parent_index_chart = [None]*len(self.agent.events)
+		event_parent_inventory_chart = [[None]]*len(self.agent.events)
+		event_parent_reachability_chart = [None]*len(self.agent.events)
 		event_possibility_chart = np.zeros(len(self.agent.events))
 		object_reachability_chart = np.zeros(len(self.agent.events))
 		rule_conditions = np.zeros((len(self.agent.events), 21))
@@ -191,16 +199,14 @@ class EventEncoderGraph():
 		# Put reachability conditions here
 
 
-		for it in range(len(event_availability_chart)):
+		for it in range(len(event_parent_index_chart)):
 			if self.agent.events[it]["event_location"] in self.agent.object_reachability_set_initial:
+				event_parent_reachability_chart[it] = -1
 				object_reachability_chart[it] = 1
-			if (rule_conditions[it] <= self.current_inventory_availability).all():
-				event_possibility_chart[it] = 1
-			if object_reachability_chart[it] and event_possibility_chart[it]:
-				event_parent_index_chart[it] = -1 # This event was already doable
 
 
-		for i, event, r_condition in enumerate(self.agent.events, self.agent.rule_sequence):
+		for i, (event, r_condition) in enumerate(zip(self.agent.events, self.agent.rule_sequence)):
+			print(event_parent_index_chart)
 			key = r_condition[0]
 			rule_number = r_condition[1]
 			transition = self.agent.rule_dict[key][0][rule_number]
@@ -208,26 +214,48 @@ class EventEncoderGraph():
 			name = self.agent.rule_dict[key][2][rule_number]
 
 			assert(object_reachability_chart[i] == 1)
-			if not event_possibility_chart[i] == 1:
-				whats_missing = -(self.current_inventory_availability - condition).clip(-1000, 0)
+			whats_missing = -(self.current_inventory_availability - condition).clip(-1000, 0)
+			if whats_missing.sum() > 0:
 				self.initial_inventory_assumption += whats_missing
 				self.current_inventory_availability += whats_missing
+				self.event_parent_index_chart[i].append(-1)
 
-			self.current_inventory_availability += transition
+			prev_indices = np.where(transition[:-1] < 0)
+			for ind in prev_indices:
+				parents = []
+				for _ in range(-transition[ind]):
+					parents.append(self.current_availability_matrix[ind].pop(0))
+				self.event_parent_index_chart[i] += list(set(parents))
 
-			for it in range(i+1, len(event_availability_chart)):
+			self.current_inventory_availability += transition[:-1]
+
+
+
+			for it in range(i+1, len(event_parent_index_chart)):
+				reachable = 0
+				possible = 0
+				change = False
 				if not object_reachability_chart[it]: 
 					if self.agent.events[it]["event_location"] in self.agent.events[i]["new_reachable_objects"]:
 						object_reachability_chart[it] = 1
+						change = True
 				if (rule_conditions[it] <= self.current_inventory_availability).all():
-					event_possibility_chart[it] = 1
-				else:
-					event_possibility_chart[it] = 0
-				if object_reachability_chart[it] and event_possibility_chart[it]:
-					event_parent_index_chart[it] = i # This event was already doable
-				else:
-					event_parent_index_chart[it] = None
+					possible = 1
 
+				if event_possibility_chart[it] and not possible:
+					event_possibility_chart[it] = 0
+					change = True
+				elif not event_possibility_chart[it] and possible:
+					event_possibility_chart[it] = 1
+					change = True
+
+				if change:
+					if event_possibility_chart[it] and object_reachability_chart[it]:
+						event_parent_index_chart[it] = i
+					else:
+						event_parent_index_chart[it] = None
+
+		print(event_parent_index_chart)
 		import ipdb; ipdb.set_trace()
 
 
@@ -369,8 +397,9 @@ class Agent():
 			self.rule_sequence += [(event["object_before"], rule) for rule in rules_executed]
 		print("------------------------")
 		if make_graph:
-			self.graph = EventEncoderGraph(self)
-			self.graph.do_stuff()
+			pass
+			#self.graph = EventEncoderGraph(self)
+			#self.graph.do_stuff()
 		return self.rule_sequence, self.events, self.graph
 
 
@@ -590,6 +619,17 @@ class Agent():
 		return self.update_reachable_object_list(states[-1])
 
 
+	def test(self, rule_sequence):
+		for _ in range(100):
+			env = self.environment_handler.get_env()
+			for rule in rule_sequence:
+				# Get skill
+				import ipdb; ipdb.set_trace()
+				# Get sequence of actions in the environment
+				# Execute in the environment
+				# Get new state
+
+
 
 def main():
 	# Initialise agent and rulebook
@@ -606,9 +646,12 @@ def main():
 			agent.next_state(state)
 		rule_sequence, events, graph = agent.what_happened(make_graph = True)
 		# We need to print graph here
-		input("{} new rules added\n Key Events in demo: {}\nContinue ?".\
-			format(len(agent.rule_dict) - num_rules_prev, [event.name for event in graph.key_events()]))
-		import ipdb; ipdb.set_trace()
+		if graph:
+			input("{} new rules added\n Key Events in demo: {}\nContinue ?".\
+				format(len(agent.rule_dict) - num_rules_prev, [event.name for event in graph.key_events()]))
+		else:
+			input("{} new rules added\nContinue ?".format(len(agent.rule_dict) - num_rules_prev))
+		agent.test(rule_sequence)
 		agent.restart()
 	#print("Final set of rules: \n\n".format())
 	#for i, rule in enumerate(agent.rule_dict):
