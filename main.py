@@ -620,14 +620,35 @@ class Agent():
 
 
 	def test(self, rule_sequence):
+		envs = []
+		demos = []
 		for _ in range(100):
 			env = self.environment_handler.get_env()
+			envs.append(env)
+			demo = [env]
 			for rule in rule_sequence:
-				# Get skill
-				import ipdb; ipdb.set_trace()
+				# Get object location where skill can be executed
+				world = self.observation_function(fullstate(env))
+				x, y = np.where( world == rule[0])	
+				try:
+					goal = x[0], y[0]
+				except:
+					demo = "Goal {} not found".format(rule[[0]])
+				x, y = np.where( world == 1)
+				start = x[0], y[0]
 				# Get sequence of actions in the environment
-				# Execute in the environment
-				# Get new state
+				try:
+					action_seq = self.use_object(world, start, goal, obstacle_id = 2)
+					# Execute in the environment
+					for a in action_seq:
+						_, env = env.step(a)
+						demo.append(env)
+				except:
+					demo = "Couldn't execute action sequence"
+			demos.append(demo)
+			# We can do more to check the result here. But maybe later. Let's get the definitions right
+		self.test_results = {"envs": envs, "demos": demos}
+
 
 
 
