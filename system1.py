@@ -183,10 +183,11 @@ class EnvironmentHandler():
 
 class System1():
 	def __init__(self):
-		self.environment_handler = EnvironmentHandler()
+		self.environment_handler = None
 		# These things can be replaced by neural networks
 		self.skills = [ self.navigation, self.use_object ]
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
+		# Agent's memory/ result
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
@@ -194,6 +195,7 @@ class System1():
 		("event_location", self.event_location) ]
 		self.events = []
 		self.segmentation_indices = []
+		self.current_index = 0
 		
 
 
@@ -213,6 +215,7 @@ class System1():
 	def next_state(self, state):
 		self.current_state_sequence.append(state)
 		self.segment()
+		self.current_index += 1
 
 
 	def segment(self):
@@ -223,7 +226,7 @@ class System1():
 			preds.append(pred)
 			segs.append(seg)
 		if (sum(segs) == 0):
-			self.segmentation_indices.append(len(self.current_state_sequence))
+			self.segmentation_indices.append(self.current_index - 1)
 			self.predict()
 		else:
 			self.current_segmentation_array.append(segs)
@@ -242,7 +245,7 @@ class System1():
 				if ind == 0:
 					print("Go to: {}".format(preds_i[ind]))
 				elif ind == 1:
-					print("Use object at {}".format(preds_i[ind]))
+					print("Use object {} at {}".format(event_i["object_before"], preds_i[ind]))
 				self.restart_segmentation()
 				break
 
@@ -265,8 +268,7 @@ class System1():
 		else:
 			pass
 		self.restart_segmentation()
-		# Now let's see what happened in events
-		return self.segmentation_indices, self.events
+		return self.segmentation_indices, self.events 
 
 
 	def observation_function(self, s):
@@ -455,21 +457,21 @@ class System1():
 		return (direction2[0][0], direction2[1][0])
 
 
-	def test(self, rule_sequence):
+	def test(self):
 		envs = []
 		demos = []
 		for _ in range(100):
 			env = self.environment_handler.get_env()
 			envs.append(env)
 			demo = [env]
-			for rule in rule_sequence:
+			for event in self.events:
 				# Get object location where skill can be executed
 				world = self.observation_function(fullstate(env))
-				x, y = np.where( world == rule[0])	
+				x, y = np.where(world == event["object_before"])	
 				try:
 					goal = x[0], y[0]
 				except:
-					demo = "Goal {} not found".format(rule[[0]])
+					demo = "Goal {} not found".format(event["object_before"])
 				x, y = np.where( world == 1)
 				start = x[0], y[0]
 				# Get sequence of actions in the environment
@@ -484,7 +486,6 @@ class System1():
 			demos.append(demo)
 			# We can do more to check the result here. But maybe later. Let's get the definitions right
 		self.test_results = {"envs": envs, "demos": demos}
-
 
 
 
@@ -505,7 +506,9 @@ def main():
 		system.next_state(state)
 	# Let's get the output of the system
 	segmentation_index, skill_sequence = system.result()
+	system.test()
 	import ipdb; ipdb.set_trace()
+	system.restart()
 		
 
 

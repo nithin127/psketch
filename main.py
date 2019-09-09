@@ -633,7 +633,7 @@ class Agent():
 				try:
 					goal = x[0], y[0]
 				except:
-					demo = "Goal {} not found".format(rule[[0]])
+					demo = "Goal {} not found".format(rule[0])
 				x, y = np.where( world == 1)
 				start = x[0], y[0]
 				# Get sequence of actions in the environment
