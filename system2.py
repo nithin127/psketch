@@ -3,7 +3,7 @@ import random
 import numpy as np
 
 from craft.envs.craft_world import CraftScenario, CraftWorld
-from system1 import System1
+from system1 import System1, EnvironmentHandler
 
 
 # -------------------------------------- Helper Functions ------------------------------------- #
@@ -71,113 +71,13 @@ number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12:
 			15: "rope", 16: "bed", 17: "shears", 18: "cloth", 19: "bridge", 20: "ladder"}
 
 
-class EnvironmentHandler():
-	def __init__(self):
-		self.cw = CraftWorld()
-
-	def get_env(self):
-		goal = np.random.randint(14) + 7
-		scenario = self.cw.sample_scenario_with_goal(goal)
-		# Assuming no initial inventory
-		return scenario.init()
-		
-	def train(self, event, agent):
-		# Replicate the demonstration in different environments
-		grid = np.zeros((WIDTH, HEIGHT, self.cw.cookbook.n_kinds))
-		i_bd = self.cw.cookbook.index["boundary"]
-		grid[0, :, i_bd] = 1
-		grid[WIDTH-1:, :, i_bd] = 1
-		grid[:, 0, i_bd] = 1
-		grid[:, HEIGHT-1:, i_bd] = 1
-		grid[5, 5, self.cw.cookbook.index[num_string_dict[event["object_before"]]]] = 1
-		scenario = CraftScenario(grid, (5,6), self.cw)
-		# "dataset"
-		state_set = []
-		for i in range(7,21):
-			inventory = np.zeros(21, dtype=int)
-			inventory[i] = 1
-			state_set.append(scenario.init(inventory))
-
-		for i in range(7,21):
-			for j in range(i+1, 21):
-				inventory = np.zeros(21, dtype=int)
-				inventory[i] = 1
-				inventory[j] = 1
-				state_set.append(scenario.init(inventory))
-
-		for _ in range(100):
-			inventory = np.random.randint(4, size=21)
-			state_set.append(scenario.init(inventory))
-
-		prev_inventory_set = np.empty((0, 21))
-		difference_set = np.empty((0, 22))
-
-		for i, ss in enumerate(state_set):
-			_, sss = ss.step(4)
-			# object_in_front_difference should only be -1 or 0, or it is disaster
-			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - ss.grid[5,5].argmax(), -1, 1)
-			transition = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
-			prev_inventory_set  = np.append(prev_inventory_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
-			difference_set = np.append(difference_set, transition, axis = 0)
-
-		unique_transitions = np.unique(difference_set, axis = 0)
-		# We want: the simplest core set of transitions, and the minimum conditions required for them to occur
-		# First we arrange them in the order of simplicity
-		# and find the minimum conditions
-
-		costs = np.zeros(len(unique_transitions))
-		for i, tr in enumerate(unique_transitions):
-			costs[i] += abs(tr[7:12]).sum()
-			costs[i] += 2*abs(tr[12:]).sum()
-		sorted_indices = costs.argsort()
-		# Now we get the core transitions 
-		core_transitions = np.empty((unique_transitions[0].shape[0], 0), dtype = int)
-		pre_requisite_set = np.empty((0, 21), dtype = int)
-		desc_set = []
-		for ind in sorted_indices:
-			matrix = np.append(core_transitions, np.expand_dims(unique_transitions[ind].copy(), axis=1), axis = 1)
-			if np.linalg.matrix_rank(matrix) == matrix.shape[1]:
-				core_transitions = matrix.copy()
-				# Also find the pre-requisite condition
-				tr_indices = np.where((unique_transitions[ind] == difference_set).all(axis=1))[0]
-				prev_inventory_subset = np.empty((0, 21))
-				for tr_ind in tr_indices:
-					prev_inventory_subset  = np.append(prev_inventory_subset, np.expand_dims(prev_inventory_set[tr_ind], axis=0), axis = 0)
-				pre_requisite = np.min(prev_inventory_subset, axis = 0)
-				pre_requisite_set = np.append(pre_requisite_set, np.expand_dims(pre_requisite, axis = 0), axis = 0)
-				# Coming up with the description of the event
-				objs_gathered = np.where(unique_transitions[ind] == 1)[0]
-				objs_used_up = np.where(unique_transitions[ind][:-1] == -1)[0]
-				text_gathered = ""
-				text_used_up = ""
-				for obj in objs_gathered:
-					text_gathered += number_inventory[obj] + ", "
-				for obj in objs_used_up:
-					text_used_up += number_inventory[obj] + ", "
-				if len(text_gathered) > 0: 
-					text_gathered = text_gathered[:-2] 
-				else: 
-					text_gathered = None
-				if len(text_used_up) > 0: 
-					text_used_up = text_used_up[:-2]
-				else: 
-					text_used_up = None
-				# Now for the description
-				if unique_transitions[ind][-1] == -1:
-					if text_gathered:
-						desc_set.append("Got: {}. Used up: {}".format(text_gathered, text_used_up))
-					else:
-						desc_set.append("Removed {} from the environment. Used up: {}".\
-							format(num_string_dict[event["object_before"]], text_used_up))
-				else:
-					desc_set.append("Used {} to make {} at {}".\
-						format(text_used_up, text_gathered, num_string_dict[event["object_before"]]))
-
-		try:
-			agent.rule_dict[event["object_before"]] = (core_transitions.T, pre_requisite_set, desc_set)
-			return True
-		except:
-			return False
+class Node():
+	def __init__(self, rule, key):
+		self.rule = rule
+		self.key = key
+		self.pre_requisites = []
+		self.output = []
+		self.done = False
 
 
 # --------------------------------------- Agent Function -------------------------------------- #
@@ -192,6 +92,8 @@ class System1Adapted(System1):
 
 
 	def restart(self):
+		self.object_reachability_set_initial = []
+		self.object_reachability_set_current = []
 		super().restart()
 
 
@@ -238,9 +140,15 @@ class System2():
 		self.rule_sequence = []
 		self.current_inventory = np.zeros(21)
 		self.graph = None
-		
 
-	def what_happened(self, events, make_graph = False):
+
+	def restart(self):
+		self.system1.restart()
+		self.rule_sequence = []
+		self.current_inventory = np.zeros(21)
+
+
+	def what_happened(self, events):
 		graph = None
 		# Now let's see what happened in events
 		print("------------------------")
@@ -268,13 +176,60 @@ class System2():
 					rules_executed.append(i)
 			self.rule_sequence += [(event["object_before"], rule) for rule in rules_executed]
 		print("------------------------")
-		if make_graph:
-			pass
-		return self.rule_sequence, graph
+		# Let's update the reachability graph (we don't have to)
+		self.update_graph()
+		return self.rule_sequence
 
 
-	def test(self, system1_results):
-		envs, demos = system1_results
+	def update_graph(self):
+		initial_inventory = np.zeros(21)
+		node_list = []
+		condition_table = np.zeros((0,21))
+		transition_table = np.zeros((0,22))
+		# Initialise stuff
+		for key in self.rule_dict.keys():
+			for ind in range(len(self.rule_dict[key][0])):
+				node_list.append(Node(key, ind))
+				transition_table = np.append(transition_table, self.rule_dict[key][0][ind]).reshape(-1, 22)
+				condition_table = np.append(condition_table, self.rule_dict[key][1][ind]).reshape(-1, 21)
+		# Get pre-requisites
+		for i, col in enumerate(condition_table):
+			required_objects = np.where(col == 1)[0]
+			if len(required_objects) == 0:
+				node_list[i].pre_requisites = None
+				node_list[i].output = [i]
+				node_list[i].done = True
+			else:
+				for obj in required_objects:
+					possible_pretasks = np.where(transition_table[:, obj] == 1)[0]
+					if len(possible_pretasks) == 0:
+						node_list[i].output = None
+						break
+					else:
+						# Picking a possible pretask at random. Can improve here. Use logic AND, OR
+						node_list[i].pre_requisites += [possible_pretasks[0]]
+		# Fill up the result list
+		todolist = []
+		for node_id, node in enumerate(node_list):
+			if (not node.done) and (node.output is not None):
+				todolist.append((node_id, node))
+		# While loop
+		for node_id, node in todolist:
+			if node.done:
+				continue
+			for pre_node_id in node.pre_requisites:
+				if not node_list[pre_node_id].done:
+					todolist.append(node)
+					node.output = []
+					break
+				else:
+					node.output += node_list[pre_node_id].output
+			node.output += [node_id]
+		import ipdb; ipdb.set_trace()
+		self.graph = node_list
+
+
+	def test(self, rule_sequence):
 		pass
 		
 
@@ -296,7 +251,7 @@ def main():
 		segmentation_index, skill_sequence = system1.result()
 		# Now system 2, update rules and get result
 		num_rules_prev = len(system2.rule_dict)
-		rule_sequence, graph = system2.what_happened(skill_sequence, make_graph = True)
+		rule_sequence, graph = system2.what_happened(skill_sequence)
 		# We need to print graph here
 		if graph:
 			input("{} new rules added\n Key Events in demo: {}\nContinue ?".\
