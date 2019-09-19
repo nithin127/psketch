@@ -186,6 +186,9 @@ class System1():
 		self.environment_handler = None
 		# These things can be replaced by neural networks
 		self.skills = [ self.navigation, self.use_object ]
+		# from nav_discriminator import navigation_discriminator_model
+		# self.navigation_discriminator = navigation_discriminator_model
+		self.navigation_discriminator = self.navigation_discriminator_dijkstra
 		self.discriminators = [ self.navigation_discriminator, self.use_object_discriminator ]
 		# Agent's memory/ result
 		self.current_state_sequence = []
@@ -336,10 +339,10 @@ class System1():
 			curr = get_prev(curr, d)
 			seq.append(d)
 		seq.reverse()
-		return seq	
+		return seq
 
 
-	def navigation_discriminator(self, demo_model):
+	def navigation_discriminator_dijkstra(self, demo_model):
 		if len(demo_model) < 2:
 			return (0.5, None)
 		world_level_1 = self.observation_function(demo_model[0])
@@ -509,7 +512,7 @@ def main():
 	system.test()
 	import ipdb; ipdb.set_trace()
 	system.restart()
-		
+
 
 
 if __name__ == "__main__":
