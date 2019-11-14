@@ -134,29 +134,28 @@ class System1Adapted(System1):
 
 class System2():
 	def __init__(self):
-		self.system1 = None
 		# These things can be replaced by neural networks
 		self.rule_dict = {}
 		self.rule_sequence = []
+		self.reachability_set_sequence = []
 		self.current_inventory = np.zeros(21)
-		self.graph = None
-
+		
 
 	def restart(self):
-		self.system1.restart()
 		self.rule_sequence = []
+		self.reachability_set_sequence = []
 		self.current_inventory = np.zeros(21)
 
 
-	def what_happened(self, events):
-		graph = None
+	def what_happened(self, events, system1):
+		self.reachability_set_sequence += [ system1.object_reachability_set_initial ]
 		# Now let's see what happened in events
 		print("------------------------")
 		print("   Describing events    ")
 		print("------------------------")
 		for ie, event in enumerate(events):
 			if not event["object_before"] in self.rule_dict.keys():
-				success = self.system1.environment_handler.train(event, self)
+				success = system1.environment_handler.train(event, self)
 				print("Training agent for event {}".format(event))
 				if not success:
 					print("Could not find appropriate rules")
@@ -175,10 +174,11 @@ class System2():
 					print("== Event == {}".format(desc))
 					rules_executed.append(i)
 			self.rule_sequence += [(event["object_before"], rule) for rule in rules_executed]
+			self.reachability_set_sequence += [ event["new_reachable_objects"] ]
 		print("------------------------")
 		# Let's update the reachability graph (we don't have to)
-		self.update_graph()
-		return self.rule_sequence
+		#self.update_graph()
+		return self.rule_sequence, self.reachability_set_sequence
 
 
 	def update_graph(self):
@@ -238,12 +238,12 @@ def main():
 	# Initialise agent and rulebook
 	system1 = System1Adapted()
 	system2 = System2()
+	import ipdb; ipdb.set_trace()
 	# Input playground environment, and link systems
 	environment_handler = EnvironmentHandler()
 	system1.environment_handler = environment_handler
-	system2.system1 = system1
 	# Load demos
-	for demo in pickle.load(open("demos.pk", "rb")):
+	for demo in [pickle.load(open("demos.pk", "rb"))[-1]]:
 		# Let system 1, do the work
 		demo_model = [ fullstate(s) for s in demo ]
 		for state in demo_model:
@@ -251,20 +251,19 @@ def main():
 		segmentation_index, skill_sequence = system1.result()
 		# Now system 2, update rules and get result
 		num_rules_prev = len(system2.rule_dict)
-		rule_sequence, graph = system2.what_happened(skill_sequence)
+		import ipdb; ipdb.set_trace()
+		rule_sequence, reachability_set_sequence = system2.what_happened(skill_sequence, system1)
 		# We need to print graph here
-		if graph:
-			input("{} new rules added\n Key Events in demo: {}\nContinue ?".\
-				format(len(system2.rule_dict) - num_rules_prev, [event.name for event in graph.key_events()]))
-		else:
-			input("{} new rules added\nContinue ?".format(len(system2.rule_dict) - num_rules_prev))
+		print("{} new rules added".format(len(system2.rule_dict) - num_rules_prev))
 		system2.test(rule_sequence)
+		system1.restart()
 		system2.restart()
 	#print("Final set of rules: \n\n".format())
 	#for i, rule in enumerate(agent.rule_dict):
 	#		print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
 	import ipdb; ipdb.set_trace()
-		
+	pickle.dump(system2.rule_dict, open("rule_dict.pk", "wb"))
+
 
 
 if __name__ == "__main__":

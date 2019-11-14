@@ -115,7 +115,7 @@ class EnvironmentHandler():
 			# object_in_front_difference should only be -1 or 0, or it is disaster
 			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - ss.grid[5,5].argmax(), -1, 1)
 			transition = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
-			prev_inventory_set  = np.append(prev_inventory_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
+			prev_inventory_set = np.append(prev_inventory_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
 			difference_set = np.append(difference_set, transition, axis = 0)
 
 		unique_transitions = np.unique(difference_set, axis = 0)
@@ -200,7 +200,6 @@ class System1():
 		self.segmentation_indices = []
 		self.current_index = 0
 		
-
 
 	def restart_segmentation(self):
 		self.current_state_sequence = [self.current_state_sequence[-1]]
