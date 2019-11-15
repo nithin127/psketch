@@ -71,15 +71,6 @@ number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12:
 			15: "rope", 16: "bed", 17: "shears", 18: "cloth", 19: "bridge", 20: "ladder"}
 
 
-class Node():
-	def __init__(self, rule, key):
-		self.rule = rule
-		self.key = key
-		self.pre_requisites = []
-		self.output = []
-		self.done = False
-
-
 # --------------------------------------- Agent Function -------------------------------------- #
 
 
@@ -138,12 +129,14 @@ class System2():
 		self.rule_dict = {}
 		self.rule_sequence = []
 		self.reachability_set_sequence = []
+		self.event_position_sequence = []
 		self.current_inventory = np.zeros(21)
 		
 
 	def restart(self):
 		self.rule_sequence = []
 		self.reachability_set_sequence = []
+		self.event_position_sequence = []
 		self.current_inventory = np.zeros(21)
 
 
@@ -174,59 +167,12 @@ class System2():
 					print("== Event == {}".format(desc))
 					rules_executed.append(i)
 			self.rule_sequence += [(event["object_before"], rule) for rule in rules_executed]
-			self.reachability_set_sequence += [ event["new_reachable_objects"] ]
+			self.reachability_set_sequence += [event["new_reachable_objects"]]
+			self.event_position_sequence += [event["event_location"]]
 		print("------------------------")
 		# Let's update the reachability graph (we don't have to)
 		#self.update_graph()
-		return self.rule_sequence, self.reachability_set_sequence
-
-
-	def update_graph(self):
-		initial_inventory = np.zeros(21)
-		node_list = []
-		condition_table = np.zeros((0,21))
-		transition_table = np.zeros((0,22))
-		# Initialise stuff
-		for key in self.rule_dict.keys():
-			for ind in range(len(self.rule_dict[key][0])):
-				node_list.append(Node(key, ind))
-				transition_table = np.append(transition_table, self.rule_dict[key][0][ind]).reshape(-1, 22)
-				condition_table = np.append(condition_table, self.rule_dict[key][1][ind]).reshape(-1, 21)
-		# Get pre-requisites
-		for i, col in enumerate(condition_table):
-			required_objects = np.where(col == 1)[0]
-			if len(required_objects) == 0:
-				node_list[i].pre_requisites = None
-				node_list[i].output = [i]
-				node_list[i].done = True
-			else:
-				for obj in required_objects:
-					possible_pretasks = np.where(transition_table[:, obj] == 1)[0]
-					if len(possible_pretasks) == 0:
-						node_list[i].output = None
-						break
-					else:
-						# Picking a possible pretask at random. Can improve here. Use logic AND, OR
-						node_list[i].pre_requisites += [possible_pretasks[0]]
-		# Fill up the result list
-		todolist = []
-		for node_id, node in enumerate(node_list):
-			if (not node.done) and (node.output is not None):
-				todolist.append((node_id, node))
-		# While loop
-		for node_id, node in todolist:
-			if node.done:
-				continue
-			for pre_node_id in node.pre_requisites:
-				if not node_list[pre_node_id].done:
-					todolist.append(node)
-					node.output = []
-					break
-				else:
-					node.output += node_list[pre_node_id].output
-			node.output += [node_id]
-		import ipdb; ipdb.set_trace()
-		self.graph = node_list
+		return self.rule_sequence, self.reachability_set_sequence, self.event_position_sequence
 
 
 	def test(self, rule_sequence):
@@ -238,7 +184,6 @@ def main():
 	# Initialise agent and rulebook
 	system1 = System1Adapted()
 	system2 = System2()
-	import ipdb; ipdb.set_trace()
 	# Input playground environment, and link systems
 	environment_handler = EnvironmentHandler()
 	system1.environment_handler = environment_handler
@@ -251,8 +196,7 @@ def main():
 		segmentation_index, skill_sequence = system1.result()
 		# Now system 2, update rules and get result
 		num_rules_prev = len(system2.rule_dict)
-		import ipdb; ipdb.set_trace()
-		rule_sequence, reachability_set_sequence = system2.what_happened(skill_sequence, system1)
+		rule_sequence, reachability_set_sequence, event_position_sequence = system2.what_happened(skill_sequence, system1)
 		# We need to print graph here
 		print("{} new rules added".format(len(system2.rule_dict) - num_rules_prev))
 		system2.test(rule_sequence)
