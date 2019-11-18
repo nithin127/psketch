@@ -189,44 +189,34 @@ class System3():
 		return pre_requisite, pre_requisite_node_index, new_unassigned_nodes, new_node_count
 
 
+	def get_core_graph_skeleton(self, objectives):
+		graph_nodes = []
+		node_count = 0
+		unassigned_nodes = []
+		graph_skeleton = {}
+		node_count += len(objectives)
+		graph_nodes += objectives
+		unassigned_nodes += objectives
+		while len(unassigned_nodes) > 0:
+			node = unassigned_nodes.pop()
+			pre_requisite, pre_requisite_node_index, \
+					new_unassigned_nodes, new_node_count = self.get_prerequisite(node, graph_nodes, node_count)
+			node_count += new_node_count
+			unassigned_nodes += new_unassigned_nodes
+			graph_nodes += new_unassigned_nodes
+			node_index = [i for i, g_node in enumerate(graph_nodes) if g_node == node]
+			graph_skeleton[node_index[0]] = pre_requisite_node_index	
+		return graph_nodes, graph_skeleton
+
+
 	def get_reachability_condition(self, initial_config, goal):
 		import ipdb; ipdb.set_trace()
 		pass
 
 
-	def get_subgraph_dependency_graph(self, initial_config, objectives, objective_type="reward"):
-		# Let's form the graph skeleton: we're assuming this would not be an AND/OR graph
-		graph_nodes = []
-		node_count = 0
-		unassigned_nodes = []
-		graph_skeleton = {}
-		if objective_type == "event":
-			node_count += len(objectives)
-			graph_nodes += objectives
-			unassigned_nodes += objectives
-			while len(unassigned_nodes) > 0:
-				node = unassigned_nodes.pop()
-				pre_requisite, pre_requisite_node_index, new_unassigned_nodes, new_node_count = self.get_prerequisite(node, graph_nodes, node_count)
-				node_count += new_node_count
-				unassigned_nodes += new_unassigned_nodes
-				graph_nodes += new_unassigned_nodes
-				node_index = [i for i, g_node in enumerate(graph_nodes) if g_node == node]
-				graph_skeleton[node_index[0]] = pre_requisite_node_index
-			import ipdb; ipdb.set_trace()
-		elif objective_type == "reward":
-			raise("Haven't implemented")
-		else:
-			raise("Unrecognised objective type: {}".format(objective_type))
-		# Now let's adapt the graph skeleton to the current environment instance and fill in the details
-		return self.adapt_to_new_env(graph_nodes, graph_skeleton, initial_config)
-
-
-	def expand_event(self, event, initial_config, adapted_graph_nodes):
-		pass
-
-
 	def adapt_to_new_env(self, graph_nodes, graph_skeleton, initial_config):
-		keys_considered = []
+		import ipdb; ipdb.set_trace()
+		keys_to_pos = {}
 		adapted_graph_nodes = []
 		adapted_graph_skeleton = {}
 		adapted_nodes_unsolved = []
@@ -239,8 +229,30 @@ class System3():
 					# new_graph_skeleton[event] = new_graph_edges
 					adapted_graph_nodes += new_nodes
 					keys_considered.append(event)
+		return [node[-1] for node in adapted_nodes_unsolved]
 
-			
+
+	def get_subgraph_dependency_graph(self, initial_config, objectives, objective_type="reward"):
+		# Let's form the graph skeleton: we're assuming this would not be an AND/OR graph
+		if objective_type == "event":
+			leftover_keys = objectives
+			graph_nodes = []
+			graph_skeleton = {}
+			overall_graph_nodes = []
+			overall_graph = {}
+			while len(leftover_keys) > 0:
+				graph_nodes, graph_skeleton, new_events = self.get_core_graph_skeleton(graph_nodes, graph_skeleton, leftover_keys)
+				leftover_keys = self.adapt_to_new_env(graph_nodes, graph_skeleton, overall_graph_nodes, overall_graph, new_events, leftover_keys, initial_config)
+			import ipdb; ipdb.set_trace()
+		elif objective_type == "reward":
+			raise("Haven't implemented")
+		else:
+			raise("Unrecognised objective type: {}".format(objective_type))
+		# Now let's adapt the graph skeleton to the current environment instance and fill in the details
+		return self.construct_final_graph(overall_graph_nodes, overall_graph, initial_config) # The costs will be added here
+
+
+	def construct_final_graph(overall_graph_nodes, overall_graph, initial_config):
 		pass
 
 
