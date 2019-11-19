@@ -3,7 +3,7 @@ import random
 import numpy as np
 
 from craft.envs.craft_world import CraftScenario, CraftWorld
-from system1 import EnvironmentHandler
+from system1 import EnvironmentHandler, find_neighbors
 from system2 import System1Adapted, System2
 
 # -------------------------------------- Helper Functions ------------------------------------- #
@@ -67,9 +67,11 @@ class System3():
 		for key in self.rule_dict.keys():
 			self.rule_dict_transitions_unwrapped = np.append(self.rule_dict_transitions_unwrapped, self.rule_dict[key][0], axis=0)
 			self.rule_dict_unwrapped_index += [(key, i) for i in range(len(self.rule_dict[key][0]))]
+		unpassable_transistions_index = np.where(self.rule_dict_transitions_unwrapped[:,-1] == 0)[0]
+		self.unpassable_objects = [ self.rule_dict_unwrapped_index[i][0] for i in unpassable_transistions_index ]
+		
 
-
-	def infer_objective(self, rule_sequence, reachability_set_sequence, event_position_sequence, initial_config):
+	def infer_objective(self, rule_sequence, reachability_set_sequence, event_position_sequence):
 		# This function outputs a reward vector in terms of events, and a reward vector in terms of the minimal 
 		# possible final inventory
 		#
@@ -189,14 +191,11 @@ class System3():
 		return pre_requisite, pre_requisite_node_index, new_unassigned_nodes, new_node_count
 
 
-	def get_core_graph_skeleton(self, objectives):
-		graph_nodes = []
-		node_count = 0
-		unassigned_nodes = []
-		graph_skeleton = {}
-		node_count += len(objectives)
+	def update_core_graph_skeleton(self, objectives, graph_nodes = [], graph_skeleton = {}):
+		unassigned_nodes = objectives
+		prev_graph_nodes = graph_nodes.copy()
 		graph_nodes += objectives
-		unassigned_nodes += objectives
+		node_count = len(graph_nodes) + len(objectives)
 		while len(unassigned_nodes) > 0:
 			node = unassigned_nodes.pop()
 			pre_requisite, pre_requisite_node_index, \
@@ -206,53 +205,83 @@ class System3():
 			graph_nodes += new_unassigned_nodes
 			node_index = [i for i, g_node in enumerate(graph_nodes) if g_node == node]
 			graph_skeleton[node_index[0]] = pre_requisite_node_index	
-		return graph_nodes, graph_skeleton
+		return graph_nodes, graph_skeleton, set(graph_nodes) - set(prev_graph_nodes)
 
 
-	def get_reachability_condition(self, initial_config, goal):
-		import ipdb; ipdb.set_trace()
-		pass
+	def get_reachability_condition(self, initial_config, goal, free_space_id = 0, obstacle_id = 2):
+		usable_objects = []
+		init_x, init_y = np.where(initial_config == 1)
+		init_x, init_y = init_x[0], init_y[0]
+		world = np.clip(initial_config, free_space_id, obstacle_id)
+		# Dijsktra logic
+		cost_map = np.inf*np.ones(world.shape)
+		cost_map[goal[0],goal[1]] = 0
+		to_visit = []
+		to_visit.append(goal)
+		while len(to_visit) > 0:
+			curr = to_visit.pop(0)
+			for nx, ny, d in find_neighbors(curr, None):
+				if world[nx, ny] == obstacle_id:
+					obj = int(initial_config[nx, ny])
+					# Insane Hard-coding B-)
+					# Also considering the same objects multiple times. Hihi
+					if not (obj in self.unpassable_objects or obj == obstacle_id):
+						usable_objects.append((nx, ny, obj))
+					continue
+				cost = cost_map[curr[0],curr[1]] + 1
+				if cost < cost_map[nx,ny]:
+					if world[nx, ny] == free_space_id:
+						to_visit.append((nx, ny))
+					cost_map[nx,ny] = cost
+		return not (cost_map[init_x, init_y] == np.inf), list(set(usable_objects))
+		
 
-
-	def adapt_to_new_env(self, graph_nodes, graph_skeleton, initial_config):
-		import ipdb; ipdb.set_trace()
-		keys_to_pos = {}
-		adapted_graph_nodes = []
-		adapted_graph_skeleton = {}
-		adapted_nodes_unsolved = []
-		for key in graph_skeleton.keys():
-			#or_list = []
-			for or_event in graph_skeleton[key]:
-				to_do = set(or_event) - set(keys_considered)
-				for event in to_do:
-					new_nodes, new_graph_edges, _, _ = self.expand_event(to_do, initial_config, adapted_graph_nodes)
-					# new_graph_skeleton[event] = new_graph_edges
-					adapted_graph_nodes += new_nodes
-					keys_considered.append(event)
-		return [node[-1] for node in adapted_nodes_unsolved]
+	def adapt_to_env(self, new_nodes, env_adapted_graph, env_adapted_node_dependency, initial_config):
+		new_nodes = [node[0] for node in new_nodes]
+		new_keys = []
+		for obj in new_nodes:
+			# Get positions
+			xs, ys = np.where(initial_config == obj)
+			env_adapted_graph[obj] = [(x, y) for x, y in zip(xs, ys)]
+			# Check reachability
+			for x, y in zip(xs, ys):
+				reachable, possible_dependencies = self.get_reachability_condition(initial_config, (x, y))
+				if not reachable:
+					env_adapted_node_dependency[(x,y)] = [ (px, py) for px, py, _ in possible_dependencies]
+					for _, _, obj_d in possible_dependencies:
+						if (obj_d in new_keys) or (obj_d in new_nodes):
+							pass
+						else:
+							new_keys.append(obj_d)
+			# Add to graph or Add to new keys
+			# for _, _, obj in possible_dependencies:
+			#	if obj in 
+		return new_keys, env_adapted_graph, env_adapted_node_dependency
 
 
 	def get_subgraph_dependency_graph(self, initial_config, objectives, objective_type="reward"):
 		# Let's form the graph skeleton: we're assuming this would not be an AND/OR graph
 		if objective_type == "event":
 			leftover_keys = objectives
+			# Core skeleton
 			graph_nodes = []
 			graph_skeleton = {}
-			overall_graph_nodes = []
-			overall_graph = {}
+			# Appended skeleton
+			env_adapted_graph = {}
+			env_adapted_node_dependency = {}
+			# Iteration
 			while len(leftover_keys) > 0:
-				graph_nodes, graph_skeleton, new_events = self.get_core_graph_skeleton(graph_nodes, graph_skeleton, leftover_keys)
-				leftover_keys = self.adapt_to_new_env(graph_nodes, graph_skeleton, overall_graph_nodes, overall_graph, new_events, leftover_keys, initial_config)
-			import ipdb; ipdb.set_trace()
+				graph_nodes, graph_skeleton, new_nodes = self.update_core_graph_skeleton(leftover_keys, graph_nodes, graph_skeleton)
+				leftover_keys, env_adapted_graph, env_adapted_node_dependency = self.adapt_to_env(new_nodes, env_adapted_graph, env_adapted_node_dependency, initial_config)
 		elif objective_type == "reward":
 			raise("Haven't implemented")
 		else:
 			raise("Unrecognised objective type: {}".format(objective_type))
 		# Now let's adapt the graph skeleton to the current environment instance and fill in the details
-		return self.construct_final_graph(overall_graph_nodes, overall_graph, initial_config) # The costs will be added here
+		return self.construct_final_graph(graph_skeleton, env_adapted_graph, env_adapted_node_dependency) # The costs will be added here
 
 
-	def construct_final_graph(overall_graph_nodes, overall_graph, initial_config):
+	def construct_final_graph(self, graph_skeleton, env_adapted_graph, env_adapted_node_dependency):
 		pass
 
 
@@ -278,8 +307,8 @@ def main():
 		num_rules_prev = len(system2.rule_dict)
 		rule_sequence, reachability_set_sequence, event_position_sequence = system2.what_happened(skill_sequence, system1)
 		# We need to print graph here
-		_, independent_events = system3.infer_objective(rule_sequence, reachability_set_sequence, event_position_sequence, demo_model[0])
-		system3.get_subgraph_dependency_graph(demo_model[0], independent_events, "event")
+		_, independent_events = system3.infer_objective(rule_sequence, reachability_set_sequence, event_position_sequence)
+		graph, nodes = system3.get_subgraph_dependency_graph(system1.observation_function(demo_model[0]), independent_events, "event")
 	#print("Final set of rules: \n\n".format())
 	#for i, rule in enumerate(agent.rule_dict):
 	#		print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
