@@ -181,7 +181,7 @@ class System3():
 				or_event_list += [event_rule]
 				or_event_index = [i for i, g_node in enumerate(graph_nodes) if g_node == event_rule]
 				if len(or_event_index) == 0:
-					or_event_index_list += [node_count + new_node_count]
+					or_event_index_list += [node_count + new_node_count - 1]
 					new_node_count += 1
 					new_unassigned_nodes += [event_rule]
 				else:
@@ -204,7 +204,7 @@ class System3():
 			unassigned_nodes += new_unassigned_nodes
 			graph_nodes += new_unassigned_nodes
 			node_index = [i for i, g_node in enumerate(graph_nodes) if g_node == node]
-			graph_skeleton[node_index[0]] = pre_requisite_node_index	
+			graph_skeleton[node_index[0]] = pre_requisite_node_index
 		return graph_nodes, graph_skeleton, set(graph_nodes) - set(prev_graph_nodes)
 
 
@@ -249,7 +249,7 @@ class System3():
 				if not reachable:
 					env_adapted_node_dependency[(x,y)] = [ (px, py) for px, py, _ in possible_dependencies]
 					for _, _, obj_d in possible_dependencies:
-						if (obj_d in new_keys) or (obj_d in new_nodes):
+						if (obj_d in new_keys) or (obj_d in new_nodes) or (obj_d in list(env_adapted_graph.keys())):
 							pass
 						else:
 							new_keys.append(obj_d)
@@ -278,10 +278,15 @@ class System3():
 		else:
 			raise("Unrecognised objective type: {}".format(objective_type))
 		# Now let's adapt the graph skeleton to the current environment instance and fill in the details
-		return self.construct_final_graph(graph_skeleton, env_adapted_graph, env_adapted_node_dependency) # The costs will be added here
+		return self.construct_final_graph(graph_skeleton, graph_nodes, env_adapted_graph, env_adapted_node_dependency) # The costs will be added here
 
 
-	def construct_final_graph(self, graph_skeleton, env_adapted_graph, env_adapted_node_dependency):
+	def construct_final_graph(self, graph_skeleton, graph_nodes, env_adapted_graph, env_adapted_node_dependency):
+		import ipdb; ipdb.set_trace()
+		final_graph = {}
+		for key in graph_skeleton.keys():
+			obj = graph_nodes[key][0]
+			break
 		pass
 
 
