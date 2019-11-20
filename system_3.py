@@ -47,40 +47,13 @@ number_inventory = {7: "iron", 8: "grass", 9: "wood", 10: "gold", 11: "gem", 12:
 
 
 class Node():
-	def __init__(self, state, inventory = np.zeros(22)):
-		# Rechable objects are in terms of (position, object_type, cost)
-		self.state = state
-		self.inventory = inventory
-		self.reachable_objects = self.get_reachable_objects()
+	def __init__(self, rule, key):
+		self.rule = rule
+		self.key = key
+		self.pre_requisites = []
+		self.output = []
+		self.done = False
 
-	def get_reachable_objects(self, free_space_id = 0, obstacle_id = 2):
-		initial_config = self.state
-		usable_objects = []
-		init_x, init_y = np.where(initial_config == 1)
-		init_x, init_y = init_x[0], init_y[0]
-		world = np.clip(initial_config, free_space_id, obstacle_id)
-		import ipdb; ipdb.set_trace()
-		# Dijsktra logic
-		cost_map = np.inf*np.ones(world.shape)
-		cost_map[init_x, init_y] = 0
-		to_visit = []
-		to_visit.append((init_x, init_y))
-		while len(to_visit) > 0:
-			curr = to_visit.pop(0)
-			for nx, ny, d in find_neighbors(curr, None):
-				cost = cost_map[curr[0],curr[1]] + 1
-				if cost < cost_map[nx,ny]:
-					cost_map[nx,ny] = cost
-					if world[nx, ny] == free_space_id:
-						to_visit.append((nx, ny))
-					obj = int(initial_config[nx, ny])
-					if (world[nx, ny] == obstacle_id) and not (obj == obstacle_id):
-						usable_objects.append(((nx, ny), obj, cost))
-					# Insane Hard-coding B-)
-					# Also considering the same objects multiple times. Hihi
-		import ipdb; ipdb.set_trace()
-		return usable_objects
-		
 
 # --------------------------------------- Agent Function -------------------------------------- #		
 
@@ -218,17 +191,107 @@ class System3():
 		return pre_requisite, pre_requisite_node_index, new_unassigned_nodes, new_node_count
 
 
+	def update_core_graph_skeleton(self, objectives, graph_nodes = [], graph_skeleton = {}):
+		unassigned_nodes = objectives
+		prev_graph_nodes = graph_nodes.copy()
+		graph_nodes += objectives
+		node_count = len(graph_nodes) + len(objectives)
+		while len(unassigned_nodes) > 0:
+			node = unassigned_nodes.pop()
+			pre_requisite, pre_requisite_node_index, \
+					new_unassigned_nodes, new_node_count = self.get_prerequisite(node, graph_nodes, node_count)
+			node_count += new_node_count
+			unassigned_nodes += new_unassigned_nodes
+			graph_nodes += new_unassigned_nodes
+			node_index = [i for i, g_node in enumerate(graph_nodes) if g_node == node]
+			graph_skeleton[node_index[0]] = pre_requisite_node_index
+		return graph_nodes, graph_skeleton, set(graph_nodes) - set(prev_graph_nodes)
+
+
+	def get_reachability_condition(self, initial_config, goal, free_space_id = 0, obstacle_id = 2):
+		usable_objects = []
+		init_x, init_y = np.where(initial_config == 1)
+		init_x, init_y = init_x[0], init_y[0]
+		world = np.clip(initial_config, free_space_id, obstacle_id)
+		# Dijsktra logic
+		cost_map = np.inf*np.ones(world.shape)
+		cost_map[goal[0],goal[1]] = 0
+		to_visit = []
+		to_visit.append(goal)
+		while len(to_visit) > 0:
+			curr = to_visit.pop(0)
+			for nx, ny, d in find_neighbors(curr, None):
+				if world[nx, ny] == obstacle_id:
+					obj = int(initial_config[nx, ny])
+					# Insane Hard-coding B-)
+					# Also considering the same objects multiple times. Hihi
+					if not (obj in self.unpassable_objects or obj == obstacle_id):
+						usable_objects.append((nx, ny, obj))
+					continue
+				cost = cost_map[curr[0],curr[1]] + 1
+				if cost < cost_map[nx,ny]:
+					if world[nx, ny] == free_space_id:
+						to_visit.append((nx, ny))
+					cost_map[nx,ny] = cost
+		return not (cost_map[init_x, init_y] == np.inf), list(set(usable_objects))
+		
+
+	def adapt_to_env(self, new_nodes, env_adapted_graph, env_adapted_node_dependency, initial_config):
+		new_nodes = [node[0] for node in new_nodes]
+		new_keys = []
+		for obj in new_nodes:
+			# Get positions
+			xs, ys = np.where(initial_config == obj)
+			env_adapted_graph[obj] = [(x, y) for x, y in zip(xs, ys)]
+			# Check reachability
+			for x, y in zip(xs, ys):
+				reachable, possible_dependencies = self.get_reachability_condition(initial_config, (x, y))
+				if not reachable:
+					env_adapted_node_dependency[(x,y)] = [ (px, py) for px, py, _ in possible_dependencies]
+					for _, _, obj_d in possible_dependencies:
+						if (obj_d in new_keys) or (obj_d in new_nodes) or (obj_d in list(env_adapted_graph.keys())):
+							pass
+						else:
+							new_keys.append(obj_d)
+			# Add to graph or Add to new keys
+			# for _, _, obj in possible_dependencies:
+			#	if obj in 
+		return new_keys, env_adapted_graph, env_adapted_node_dependency
+
+
 	def get_subgraph_dependency_graph(self, initial_config, objectives, objective_type="reward"):
 		# Let's form the graph skeleton: we're assuming this would not be an AND/OR graph
 		if objective_type == "event":
-			reward_vector = np.zeros(22)
-			for obj in objectives: reward_vector[obj] = 1
+			leftover_keys = objectives
+			# Core skeleton
+			graph_nodes = []
+			graph_skeleton = {}
+			# Appended skeleton
+			env_adapted_graph = {}
+			env_adapted_node_dependency = {}
+			# Iteration
+			while len(leftover_keys) > 0:
+				graph_nodes, graph_skeleton, new_nodes = self.update_core_graph_skeleton(leftover_keys, graph_nodes, graph_skeleton)
+				leftover_keys, env_adapted_graph, env_adapted_node_dependency = self.adapt_to_env(new_nodes, env_adapted_graph, env_adapted_node_dependency, initial_config)
+		elif objective_type == "reward":
+			raise("Haven't implemented")
+		else:
+			raise("Unrecognised objective type: {}".format(objective_type))
+		# Now let's adapt the graph skeleton to the current environment instance and fill in the details
+		return self.construct_final_graph(graph_skeleton, graph_nodes, env_adapted_graph, env_adapted_node_dependency) # The costs will be added here
 
-		self.start_node = Node(init_state)
-		self.all_nodes = [self.start_node]
-		self.leading_nodes = [self.start_node]	
+
+	def construct_final_graph(self, graph_skeleton, graph_nodes, env_adapted_graph, env_adapted_node_dependency):
+		import ipdb; ipdb.set_trace()
+		final_graph = {}
+		for key in graph_skeleton.keys():
+			obj = graph_nodes[key][0]
+			break
+		pass
 
 
+	def play(self, task_sequence):
+		pass
 
 
 
