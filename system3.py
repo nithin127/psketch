@@ -333,6 +333,7 @@ class System3():
 
 
 	def approximate_transition_step(self, config, skill):
+		# Use rule dict here
 		return new_config
 
 
@@ -349,8 +350,11 @@ class System3():
 		while len(to_search) > 0:
 			node = to_search.pop()
 			available_options = get_next_options(node.state_space, graph_guide)
+			for option in available_options:
+				inventory_change, new_options, cost = approximate_transition_step(node.state_space, option)
+				# reward = relation between different things
+				# add to search or otherwise
 		return solutions
-
 
 
 def main():
