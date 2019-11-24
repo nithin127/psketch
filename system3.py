@@ -206,7 +206,7 @@ class System3():
 		self.reusable_events = []
 		# Get the independent events and the required inventory
 		for event_num in independent_nodes:
-			event = rule_sequence[event_num] 
+			event = rule_sequence[event_num]
 			self.independent_events.append(event)
 			for obj in np.where(self.rule_dict[event[0]][0][event[1]] == 1)[0]:
 				self.required_inventory[obj] += 1
@@ -215,7 +215,7 @@ class System3():
 				_ = inventory_condition_buffer.pop(ind)
 		# Assign all the remaining inventory objectives as bonus
 		for obj, event_num in inventory_condition_buffer: 
-			self.reusable_events.append(obj)
+			self.reusable_events.append(rule_sequence[event_num])
 			self.bonus_inventory[obj] += 1
 		return {"independent_events": self.independent_events, "reusable_events": self.reusable_events, \
 				"required_inventory": self.required_inventory, "bonus_inventory": self.bonus_inventory}
@@ -238,7 +238,7 @@ class System3():
 				or_event_list += [event_rule]
 				or_event_index = [i for i, g_node in enumerate(graph_nodes) if g_node == event_rule]
 				if len(or_event_index) == 0:
-					or_event_index_list += [node_count + new_node_count - 1]
+					or_event_index_list += [node_count + new_node_count]
 					new_node_count += 1
 					new_unassigned_nodes += [event_rule]
 				else:
@@ -252,7 +252,7 @@ class System3():
 		unassigned_nodes = objectives
 		prev_graph_nodes = graph_nodes.copy()
 		graph_nodes += objectives
-		node_count = len(graph_nodes) + len(objectives)
+		node_count = len(graph_nodes)
 		while len(unassigned_nodes) > 0:
 			node = unassigned_nodes.pop()
 			pre_requisite, pre_requisite_node_index, \
@@ -350,7 +350,7 @@ class System3():
 		#
 		inventory = node.inventory
 		graph = node.graph
-		inventory_reward = abs(self.required_inventory - inventory) + alpha*abs(self.bonus_inventory - inventory)
+		inventory_reward = (self.required_inventory - inventory).clip(0) + alpha*(self.bonus_inventory - inventory).clip(0)
 		nodes = []
 		rewards = []
 		event__rewards = []
@@ -359,8 +359,10 @@ class System3():
 			rule_indices =  np.where(self.rule_dict_transitions_unwrapped[:, obj] >  0)[0]
 			rules = [self.rule_dict_unwrapped_index[rule_index] for rule_index in rule_indices]
 			for rule in rules: 
-				event_rewards.append(rule, inventory_reward[obj])
+				event__rewards.append((rule, inventory_reward[obj]))
 		while (len(event__rewards) > 0) or (len(non_reachable_env_node__rewards) > 0):
+			# This is a nice visualisation, comment this out later
+			# input("{}\n{}\n{}\n\n".format(event__rewards, non_reachable_env_node__rewards, nodes))
 			# Going through core graph skeleton
 			if len(event__rewards) > 0:
 				event, reward = event__rewards.pop()
@@ -380,7 +382,16 @@ class System3():
 					event_id = graph["nodes"].index(event)
 					for or_event_list in graph["skeleton"][event_id]:
 						for or_event in or_event_list:
-							event__rewards.append((or_event, reward*gamma))
+							event = graph["nodes"][or_event]
+							# We're not adding nodes that are already satisfied, 
+							# and we're subtracting rewards from nodes that are partially satisfied
+							for obj in np.where(self.rule_dict[event[0]][0][event[1]] > 0)[0]:
+								already_satisfied = inventory[obj]
+							new_reward = reward*gamma - already_satisfied
+							if new_reward > 0:
+								event__rewards.append((event, new_reward))
+							else:
+								pass
 			else:
 				pass
 			# Going through environment specific nodes
@@ -391,9 +402,9 @@ class System3():
 				event__rewards_appendage = []
 				for dep_obj_pos, possible_event in possible_events:
 					event__rewards_appendage.append((possible_event, reward))
-					if (inventory - rule_dict[possible_event[0]][1][possible_event[1]] >= 0):
+					if (inventory - self.rule_dict[possible_event[0]][1][possible_event[1]] >= 0).all():
 						nodes.append(dep_obj_pos)	
-						reward.append(reward)
+						rewards.append(reward)
 						event_found = True
 						break
 					else:
@@ -415,17 +426,34 @@ class System3():
 		return final_nodes, final_rewards
 
 
-	def get_next_options(self, node, use_graph_guide):
+	def get_next_options(self, node, use_graph_guide, beta=0.5):
+		# 
+		# alpha: independent to reusable/bonus event reward ratio
+		# beta: cost/reward ratio that we'll care for #### Not used ####
+		# gamma: same as RL. discount factor (used to propagate rewards through the graph)
+		#
 		config = node.state_space
 		init_x, init_y = np.where(config == 1)
 		init_x, init_y = init_x[0], init_y[0]
 		_, options, costs = self.get_reachability_condition(config, (init_x, init_y))
-		combined_list = list(zip(options, costs))
-		np.random.shuffle(combined_list)
-		return zip(*combined_list)
+		if not use_graph_guide:
+			combined_list = list(zip(options, costs))
+			np.random.shuffle(combined_list)
+			return zip(*combined_list)
+		else:
+			nodes, rewards = self.graph_cost(node)
+			sorted_ind = sorted(range(len(rewards)), key=lambda k: rewards[k], reverse=True)
+			final_options = []
+			final_costs = []
+			## Sorting doesn't matter here; but still
+			for ind in sorted_ind:
+				option, cost = [(options[i], costs[i]) for i in range(len(options)) if nodes[ind] == options[i][0]][0]
+				final_options.append(option)
+				final_costs.append(cost)
+			return final_options, final_costs
 
 
-	def approximate_transition_step(self, node, option, use_graph_guide):
+	def approximate_transition_step(self, node, option, cost, use_graph_guide):
 		# Use rule dict here
 		change_inventory = False
 		change_structure = False
@@ -440,7 +468,7 @@ class System3():
 		for i in range(num_rules):
 			transition = self.rule_dict[obj][0][i]
 			condition = self.rule_dict[obj][1][i]
-			
+
 			if (new_inventory - condition >= 0).all():
 				new_inventory += transition[:-1]
 				change_inventory = True
@@ -449,10 +477,10 @@ class System3():
 
 			if transition[-1] == -1:
 				new_state[obj_pos[0], [obj_pos[1]]] = 0
-				import ipdb; ipdb.set_trace()
 				ind = new_graph["node_pos"][obj].index(obj_pos)
 				_ = new_graph["node_pos"][obj].pop(ind)
 				_ = new_graph["node_pos_dependencies"].pop(obj_pos, None)
+				pop_these = []
 				for key in new_graph["node_pos_dependencies"].keys():
 					pop_this = False
 					for dep_obj_pos, _ in new_graph["node_pos_dependencies"][key]:
@@ -460,10 +488,12 @@ class System3():
 							pop_this = True
 						else:
 							pass
-					if pop_this: 
-						_ = new_graph["node_pos_dependencies"].pop(key, None)
+					if pop_this:
+						pop_these.append(key) 
 					else:
 						pass
+				for key in pop_these:
+					_ = new_graph["node_pos_dependencies"].pop(key, None)
 				change_structure = True
 				break
 			else:
@@ -474,7 +504,7 @@ class System3():
 		new_state[agent_pos[0], agent_pos[1]] = 1
 
 		new_node = Node(new_inventory, new_state, new_graph)
-		new_node.reward_so_far = node.reward_so_far + np.multiply(new_inventory - node.inventory, bonus_inventory).sum()
+		new_node.reward_so_far = node.reward_so_far + np.multiply(new_inventory - node.inventory, self.bonus_inventory).sum()
 		new_node.skills_so_far = node.skills_so_far + [(option[0], option[1])]
 		new_node.cost_so_far = node.cost_so_far + cost
 				
@@ -494,6 +524,9 @@ class System3():
 		initial_config[dir_x, dir_y] += 0.5
 		# Configure start node
 		start_node = Node(np.zeros(self.required_inventory.shape), initial_config, self.graph_guide)
+		## test
+		start_node.inventory[8] = 1
+		self.graph_cost(start_node)
 		to_search.append(start_node)
 		# Graph search
 		count = 0
@@ -503,10 +536,10 @@ class System3():
 			available_options, costs = self.get_next_options(node, use_graph_guide)
 			# Running through possible options
 			for option, cost in zip(available_options, costs):
-				new_node, change = self.approximate_transition_step(node, option, use_graph_guide)
+				new_node, change = self.approximate_transition_step(node, option, cost, use_graph_guide)
 				if not change:
 					continue
-				if (new_inventory - required_inventory >= 0).all():
+				if (new_node.inventory - self.required_inventory >= 0).all():
 					indices_to_remove = []
 					pareto_front = True
 					for i, prev_sol in enumerate(solutions):
@@ -519,10 +552,7 @@ class System3():
 						_ = solutions.pop(ind - i)
 				# Should we further search this node. As of now, we're just saying yes to everything
 				to_search.append(new_node)
-			#import ipdb; ipdb.set_trace()	
-			print(count, len(solutions), len(to_search))
-			if count > 1000:
-				import ipdb; ipdb.set_trace()	
+				# print(count, len(solutions), len(to_search))
 		return solutions
 
 
@@ -533,7 +563,7 @@ def main():
 	system2.rule_dict = pickle.load(open("rule_dict.pk", "rb"))
 	system3 = System3(system2.rule_dict)
 	# Load demos
-	for demo in [pickle.load(open("demos.pk", "rb"))[2]]:
+	for demo in [pickle.load(open("demos.pk", "rb"))[-1]]:
 		# System 1, segments original demo
 		demo_model = [ fullstate(s) for s in demo ]
 		for state in demo_model:
@@ -551,7 +581,7 @@ def main():
 		objective = system3.infer_objective(rule_sequence, reachability_set_sequence, event_position_sequence)
 		graph_guide = system3.get_dependency_graph_guide(system1.observation_function(demo_model[0]))
 		possible_skill_sequences = system3.play(system1.observation_function(demo_model[0]))
-		self.reset_demo_objectives()
+		system3.reset_demo_objectives()
 	#print("Final set of rules: \n\n".format())
 	#for i, rule in enumerate(agent.rule_dict):
 	#		print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
