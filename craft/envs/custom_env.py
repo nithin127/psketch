@@ -3,8 +3,8 @@ from craft.envs.craft_world import *
 from craft.envs.cookbook import Cookbook
 
 
-WIDTH = 12
-HEIGHT = 12
+WIDTH = 15
+HEIGHT = 15
 
 cookbook = Cookbook()
 random = np.random.RandomState(0)
@@ -14,6 +14,7 @@ world = CraftWorld()
 # Design environment here
 
 def design_env():
+	# Assuming we have access to all objects
 	grid = np.zeros((WIDTH, HEIGHT, cookbook.n_kinds))
 	i_bd = cookbook.index["boundary"]
 
@@ -24,14 +25,15 @@ def design_env():
 	grid[:, HEIGHT-1:, i_bd] = 1
 
 
-	for _ in range(3):
-		ws_x, ws_y = random_free(grid, random)
-		grid[ws_x, ws_y, cookbook.index["wood"]] = 1
+	for primitive in cookbook.primitives:
+		for _ in range(3):
+			ws_x, ws_y = random_free(grid, random)
+			grid[ws_x, ws_y, primitive] = 1
 
 
-	for _ in range(7):
+	for environment_obj in cookbook.environment:
 		ws_x, ws_y = random_free(grid, random)
-		grid[ws_x, ws_y, cookbook.index["boundary"]] = 1
+		grid[ws_x, ws_y, environment_obj] = 1
 
 
 	init_pos = random_free(grid, random)
@@ -51,4 +53,4 @@ state.render()
 
 import ipdb; ipdb.set_trace()
 state.render()
-save_state(state, "wood_three.pk")
+save_state(state, "custom_map.pk")

@@ -45,7 +45,7 @@ def get_prev(pos, dirc):
 
 def fullstate(state):
     f_state = state.grid[:,:,1:12]
-    f_state = np.concatenate((f_state, np.zeros((12,12,1))), axis=2)
+    f_state = np.concatenate((f_state, np.zeros((f_state.shape[0], f_state.shape[1], 1))), axis=2)
     f_state[state.pos[0], state.pos[1], 11] = 1
     if state.dir == 2:   #left
         f_state[state.pos[0] - 1, state.pos[1], 11] = -1
@@ -79,7 +79,7 @@ class EnvironmentHandler():
 		# Assuming no initial inventory
 		return scenario.init()
 		
-	def train(self, event, agent):
+	def get_full_state_set(self, event):
 		# Replicate the demonstration in different environments
 		grid = np.zeros((WIDTH, HEIGHT, self.cw.cookbook.n_kinds))
 		i_bd = self.cw.cookbook.index["boundary"]
@@ -106,76 +106,7 @@ class EnvironmentHandler():
 		for _ in range(100):
 			inventory = np.random.randint(4, size=21)
 			state_set.append(scenario.init(inventory))
-
-		prev_inventory_set = np.empty((0, 21))
-		difference_set = np.empty((0, 22))
-
-		for i, ss in enumerate(state_set):
-			_, sss = ss.step(4)
-			# object_in_front_difference should only be -1 or 0, or it is disaster
-			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - ss.grid[5,5].argmax(), -1, 1)
-			transition = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
-			prev_inventory_set = np.append(prev_inventory_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
-			difference_set = np.append(difference_set, transition, axis = 0)
-
-		unique_transitions = np.unique(difference_set, axis = 0)
-		# We want: the simplest core set of transitions, and the minimum conditions required for them to occur
-		# First we arrange them in the order of simplicity
-		# and find the minimum conditions
-
-		costs = np.zeros(len(unique_transitions))
-		for i, tr in enumerate(unique_transitions):
-			costs[i] += abs(tr[7:12]).sum()
-			costs[i] += 2*abs(tr[12:]).sum()
-		sorted_indices = costs.argsort()
-		# Now we get the core transitions 
-		core_transitions = np.empty((unique_transitions[0].shape[0], 0), dtype = int)
-		pre_requisite_set = np.empty((0, 21), dtype = int)
-		desc_set = []
-		for ind in sorted_indices:
-			matrix = np.append(core_transitions, np.expand_dims(unique_transitions[ind].copy(), axis=1), axis = 1)
-			if np.linalg.matrix_rank(matrix) == matrix.shape[1]:
-				core_transitions = matrix.copy()
-				# Also find the pre-requisite condition
-				tr_indices = np.where((unique_transitions[ind] == difference_set).all(axis=1))[0]
-				prev_inventory_subset = np.empty((0, 21))
-				for tr_ind in tr_indices:
-					prev_inventory_subset  = np.append(prev_inventory_subset, np.expand_dims(prev_inventory_set[tr_ind], axis=0), axis = 0)
-				pre_requisite = np.min(prev_inventory_subset, axis = 0)
-				pre_requisite_set = np.append(pre_requisite_set, np.expand_dims(pre_requisite, axis = 0), axis = 0)
-				# Coming up with the description of the event
-				objs_gathered = np.where(unique_transitions[ind] == 1)[0]
-				objs_used_up = np.where(unique_transitions[ind][:-1] == -1)[0]
-				text_gathered = ""
-				text_used_up = ""
-				for obj in objs_gathered:
-					text_gathered += number_inventory[obj] + ", "
-				for obj in objs_used_up:
-					text_used_up += number_inventory[obj] + ", "
-				if len(text_gathered) > 0: 
-					text_gathered = text_gathered[:-2] 
-				else: 
-					text_gathered = None
-				if len(text_used_up) > 0: 
-					text_used_up = text_used_up[:-2]
-				else: 
-					text_used_up = None
-				# Now for the description
-				if unique_transitions[ind][-1] == -1:
-					if text_gathered:
-						desc_set.append("Got: {}. Used up: {}".format(text_gathered, text_used_up))
-					else:
-						desc_set.append("Removed {} from the environment. Used up: {}".\
-							format(num_string_dict[event["object_before"]], text_used_up))
-				else:
-					desc_set.append("Used {} to make {} at {}".\
-						format(text_used_up, text_gathered, num_string_dict[event["object_before"]]))
-
-		try:
-			agent.rule_dict[event["object_before"]] = (core_transitions.T, pre_requisite_set, desc_set)
-			return True
-		except:
-			return False
+		return state_set
 
 
 # --------------------------------------- Agent Function -------------------------------------- #

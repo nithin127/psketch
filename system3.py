@@ -23,7 +23,7 @@ HEIGHT = 12
 
 def fullstate(state):
     f_state = state.grid[:,:,1:12]
-    f_state = np.concatenate((f_state, np.zeros((12,12,1))), axis=2)
+    f_state = np.concatenate((f_state, np.zeros((f_state.shape[0], f_state.shape[1], 1))), axis=2)
     f_state[state.pos[0], state.pos[1], 11] = 1
     if state.dir == 2:   #left
         f_state[state.pos[0] - 1, state.pos[1], 11] = -1
