@@ -131,7 +131,9 @@ class System2():
 		self.reachability_set_sequence = []
 		self.event_position_sequence = []
 		self.current_inventory = np.zeros(21)
-
+		self.rule_dict_oracle = pickle.load(open("rule_dict.pk", "rb"))
+		self.craft_scenario = CraftScenario		
+		self.craft_world = CraftWorld		
 
 	def restart(self):
 		self.rule_sequence = []
@@ -148,7 +150,8 @@ class System2():
 		print("------------------------")
 		for ie, event in enumerate(events):
 			if not event["object_before"] in self.rule_dict.keys():
-				prev_inventory_set, transitions_set = self.fully_analyse_object(system1.environment_handler, event)
+				state_set = system1.environment_handler.get_full_state_set(event)
+				prev_inventory_set, transitions_set = self.fully_analyse_object(state_set)
 				success = self.add_to_rule_base(prev_inventory_set, transitions_set, event["object_before"])
 				print("Training agent for event {}".format(event))
 				if success == False:
@@ -192,32 +195,76 @@ class System2():
 		return rule_sequence, reachability_set_sequence, event_position_sequence
 
 
-	def explore_env(self, environment, system1, type="random"):
-		import ipdb; ipdb.set_trace()
-		m = 100 # Number of attempts at exploration
-		b = 100 # Number of skills in each exploration
-		obs_env = system1.observation_function(fullstate(environment))
-		for _ in range(m):
-			new_init = obs_env.copy()
-			for _ in range(b):
-				pass
+	def explore_env(self, environments, system1, num_unique_envs = 3, num_envs = 100, max_skills_per_env = 100):
+		unique_initial_environments = np.random.choice(environments, min(num_unique_envs, len(environments)), replace=False)
+		env_indices = np.random.choice(len(unique_initial_environments), num_envs, replace=True)
+		unique_initial_environments = [env.init() for env in unique_initial_environments]
+		#state_set = {}
+		correct_rules_growth = []
+		compounded_rules_growth = []
+		incorrect_rules_growth = []
+		total_rules_growth = []
+		# The thing
+		for ind in env_indices:
+			grid, pos = unique_initial_environments[ind].grid, unique_initial_environments[ind].pos
+			state = self.craft_scenario(grid, pos, self.craft_world())
+			state = state.init()
+			obs_env = system1.observation_function(fullstate(state))
+			# Get all the skill options beforehand
+			dir_x, dir_y = np.where(obs_env%1 == 0.5)
+			obs_env[dir_x[0]][dir_y[0]] += 0.5
+			obs_env = obs_env.astype(np.int64)
+			skill_options = np.where(obs_env > 2)
+			option_ind = list(range(len(skill_options[0])))
+
+			for _ in range(max_skills_per_env):
 				# Pick skill
-				# Execute
-				# Gather rules
-		num_new_rules = len(system2.rule_dict)
-		xys = {}
-		for obj in xys.keys():
-			prev_inventory_set, difference_set = xys[obj]
+				agent_obs = system1.observation_function(fullstate(state))
+				agent_pos = state.pos
+				option = option_ind.pop(np.random.choice(len(option_ind)))
+				obj = int(agent_obs[skill_options[0][option], skill_options[1][option]])
+				# Execute and gather critical states
+				action_sequence = system1.use_object(agent_obs, (agent_pos[0], agent_pos[1]), \
+					(skill_options[0][option], skill_options[1][option]))
+				if action_sequence[-1] == 4:
+					for a in action_sequence[:-1]:
+						_, state = state.step(a)
+					prev_inventory_set, difference_set = self.fully_analyse_object([state])
+					success = self.add_to_rule_base(prev_inventory_set, difference_set, obj)
+					if success:
+						correct_rules, compounded_rules, incorrect_rules = self.analyse_rule_base()
+						correct_rules_growth.append(correct_rules)
+						compounded_rules_growth.append(compounded_rules)
+						incorrect_rules_growth.append(incorrect_rules)
+						total_rules_growth.append(correct_rules+incorrect_rules+compounded_rules)
+
+
+					_, state = state.step(action_sequence[-1])
+				else:
+					pass
+				#if obj in state_set.keys():
+				#	state_set[obj].append(state)
+				#else:
+				#	state_set[obj] = [state]
+
+				# Break condition
+				if len(option_ind) == 0:
+					break
+
+		import ipdb; ipdb.set_trace()
+
+		"""
+		num_new_rules = 0
+		for obj in state_set.keys():
+			prev_inventory_set, difference_set = self.fully_analyse_object(state_set[obj])
 			success = self.add_to_rule_base(prev_inventory_set, difference_set, obj)
-			pass
+			if success is not False:
+				num_new_rules += success
+		
+		print("{} new rules added".format(num_rules_prev))
+		"""
 
-		# We need to print graph here
-		print("{} new rules added".format(len(system2.rule_dict) - num_rules_prev))
-		return 
-
-
-	def fully_analyse_object(self, environment_handler, event):
-		state_set = environment_handler.get_full_state_set(event)
+	def fully_analyse_object(self, state_set):
 		condition_set = np.empty((0, 21))
 		difference_set = np.empty((0, 22))
 
@@ -294,11 +341,31 @@ class System2():
 
 
 		try:
+			if core_transitions.shape[0] == 0:
+				return False
 			self.rule_dict[rule_object] = (core_transitions.T, pre_requisite_set, desc_set)
-			return len(core_transitions)
+			return True
 		except:
 			return False
 		
+
+	def analyse_rule_base(self):
+		correct_rules = 0
+		compounded_rules = 0
+		incorrect_rules = 0
+
+		gathered_keys = set(self.rule_dict.keys())
+		gt_keys = set(self.rule_dict_oracle.keys())
+		for key in gathered_keys:
+			tr_gathered = self.rule_dict[key][0]
+			pre_gathered = self.rule_dict[key][1]
+			# Check if transitions are correct, or compounded
+			# If either, check if pre-requisite are appropriate
+			# return as such
+			pass
+
+		return correct_rules, compounded_rules, incorrect_rules
+		import ipdb; ipdb.set_trace()
 
 
 def main():
@@ -310,12 +377,12 @@ def main():
 	system1.environment_handler = environment_handler
 	# Prepare input
 	#input_system2 = [pickle.load(open("demos.pk", "rb"))[-1], "demo"]
-	input_system2 = [pickle.load(open("custom_map.pk", "rb")), "env"]
+	input_system2 = [pickle.load(open("custom_maps.pk", "rb")), "env"]
 	# Feed to system 2
 	if input_system2[1] == "demo":
 		rule_sequence, reachability_set_sequence, event_position_sequence = system2.use_demo(input_system2[0], system1)
 	elif input_system2[1] == "env":
-		system2.explore_env(input_system2[0], system1)
+		system2.explore_env(input_system2[0], system1, num_unique_envs = 3, num_envs = 100, max_skills_per_env = 100)
 	#print("Final set of rules: \n\n".format())
 	#for i, rule in enumerate(agent.rule_dict):
 	#		print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
