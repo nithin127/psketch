@@ -231,6 +231,7 @@ class System2():
 						_, state = state.step(a)
 					prev_inventory_set, difference_set = self.fully_analyse_object([state])
 					success = self.add_to_rule_base(prev_inventory_set, difference_set, obj)
+					print (success, [len(self.rule_dict[key][0]) for key in self.rule_dict.keys()])
 					if success:
 						correct_rules, compounded_rules, incorrect_rules = self.analyse_rule_base()
 						correct_rules_growth.append(correct_rules)
@@ -341,7 +342,7 @@ class System2():
 
 
 		try:
-			if core_transitions.shape[0] == 0:
+			if core_transitions.shape[1] == 0:
 				return False
 			self.rule_dict[rule_object] = (core_transitions.T, pre_requisite_set, desc_set)
 			return True
@@ -360,12 +361,27 @@ class System2():
 			tr_gathered = self.rule_dict[key][0]
 			pre_gathered = self.rule_dict[key][1]
 			# Check if transitions are correct, or compounded
-			# If either, check if pre-requisite are appropriate
-			# return as such
-			pass
-
-		return correct_rules, compounded_rules, incorrect_rules
+			for transition in tr_gathered:
+				gt_transitions = self.rule_dict_oracle[key][0]
+				gt_prerequisite = self.rule_dict_oracle[key][1]
+				import ipdb; ipdb.set_trace()
+				matrix = np.append(gt_transitions, np.expand_dims(transition, axis =0), axis = 0)
+				if np.linalg.matrix_rank(matrix) == matrix.shape[0]:
+					# This is a new rule, not present in the oracle
+					incorrect_rules += 1
+				else:
+					# Get coefficient and check pre-requisite accordingly
+					coeff = np.linalg.lstsq(gt_transitions, np.expand_dims(transition, axis =0))
+					if not np.allclose(gt_prerequisite*coeff - pre_gathered):
+						incorrect_rules += 1
+					else:
+						if coeff.sum() == 1:
+							correct_rules += 1
+						else:
+							compounded_rules += 1
+		
 		import ipdb; ipdb.set_trace()
+		return correct_rules, compounded_rules, incorrect_rules
 
 
 def main():
