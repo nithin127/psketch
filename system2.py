@@ -195,7 +195,38 @@ class System2():
 		return rule_sequence, reachability_set_sequence, event_position_sequence
 
 
-	def explore_env(self, environments, system1, num_unique_envs = 3, num_envs = 100, max_skills_per_env = 100):
+	def explore_env_specific(self, state, system1, object_sequence, print_rule_base = True):
+		# Hmm, let's see
+		for obj in object_sequence:
+			agent_obs = system1.observation_function(fullstate(state))
+			agent_pos = state.pos
+			obj_pos_x, obj_pos_y = np.where(agent_obs == obj)
+			obj_pos_x, obj_pos_y = obj_pos_x[0], obj_pos_y[0]
+			action_sequence = system1.use_object(agent_obs, (agent_pos[0], agent_pos[1]), \
+								(obj_pos_x, obj_pos_y))
+			
+			if action_sequence[-1] == 4:
+				for a in action_sequence[:-1]:
+					_, state = state.step(a)
+				
+				prev_inventory_set, transition_set = self.fully_analyse_object([state])
+				success = self.add_to_rule_base(prev_inventory_set, transition_set, obj)
+				_, state = state.step(action_sequence[-1])
+				
+				#import ipdb; ipdb.set_trace()
+
+				if print_rule_base:
+					for key in self.rule_dict:
+						print("Object:", num_string_dict[key])
+						if len(self.rule_dict[key][0].shape) == 2:
+							for i in range(len(self.rule_dict[key][0])):
+								print("Transition:", self.rule_dict[key][0][i].astype(np.int64), "\nPre-requisite:", self.rule_dict[key][1][i].astype(np.int64), "\n", self.rule_dict[key][2][i], "\n")
+						else:
+							print("Transition:", self.rule_dict[key][0].astype(np.int64), "\nPre-requisite:", self.rule_dict[key][1].astype(np.int64), "\n", self.rule_dict[key][2])
+						#print("\n")
+
+
+	def explore_env(self, environments, system1, num_unique_envs = 3, num_envs = 1000, max_skills_per_env = 15):
 		unique_initial_environments = np.random.choice(environments, min(num_unique_envs, len(environments)), replace=False)
 		env_indices = np.random.choice(len(unique_initial_environments), num_envs, replace=True)
 		unique_initial_environments = [env.init() for env in unique_initial_environments]
@@ -220,26 +251,31 @@ class System2():
 			for _ in range(max_skills_per_env):
 				# Pick skill
 				agent_obs = system1.observation_function(fullstate(state))
+				dir_x, dir_y = np.where(agent_obs%1 == 0.5)
+				agent_obs[dir_x[0]][dir_y[0]] += 0.5
+				agent_obs = agent_obs.astype(np.int64)
 				agent_pos = state.pos
 				option = option_ind.pop(np.random.choice(len(option_ind)))
 				obj = int(agent_obs[skill_options[0][option], skill_options[1][option]])
 				# Execute and gather critical states
-				action_sequence = system1.use_object(agent_obs, (agent_pos[0], agent_pos[1]), \
+				try:
+					action_sequence = system1.use_object(agent_obs, (agent_pos[0], agent_pos[1]), \
 					(skill_options[0][option], skill_options[1][option]))
+				except:
+					pass
 				if action_sequence[-1] == 4:
 					for a in action_sequence[:-1]:
 						_, state = state.step(a)
-					prev_inventory_set, difference_set = self.fully_analyse_object([state])
-					success = self.add_to_rule_base(prev_inventory_set, difference_set, obj)
-					print (success, [len(self.rule_dict[key][0]) for key in self.rule_dict.keys()])
-					if success:
-						correct_rules, compounded_rules, incorrect_rules = self.analyse_rule_base()
-						correct_rules_growth.append(correct_rules)
-						compounded_rules_growth.append(compounded_rules)
-						incorrect_rules_growth.append(incorrect_rules)
-						total_rules_growth.append(correct_rules+incorrect_rules+compounded_rules)
+					prev_inventory_set, transition_set = self.fully_analyse_object([state])
+					success = self.add_to_rule_base(prev_inventory_set, transition_set, obj)
+					correct_rules, compounded_rules, incorrect_rules = self.analyse_rule_base()
+					correct_rules_growth.append(correct_rules)
+					compounded_rules_growth.append(compounded_rules)
+					incorrect_rules_growth.append(incorrect_rules)
+					total_rules_growth.append(correct_rules+incorrect_rules+compounded_rules)
 
-
+					print (success, (correct_rules, compounded_rules, incorrect_rules), [len(self.rule_dict[key][0]) for key in self.rule_dict.keys()])
+						
 					_, state = state.step(action_sequence[-1])
 				else:
 					pass
@@ -252,13 +288,15 @@ class System2():
 				if len(option_ind) == 0:
 					break
 
-		import ipdb; ipdb.set_trace()
+		return correct_rules_growth, compounded_rules_growth, incorrect_rules_growth, total_rules_growth 
+
+		# Now plot
 
 		"""
 		num_new_rules = 0
 		for obj in state_set.keys():
-			prev_inventory_set, difference_set = self.fully_analyse_object(state_set[obj])
-			success = self.add_to_rule_base(prev_inventory_set, difference_set, obj)
+			prev_inventory_set, transition_set = self.fully_analyse_object(state_set[obj])
+			success = self.add_to_rule_base(prev_inventory_set, transition_set, obj)
 			if success is not False:
 				num_new_rules += success
 		
@@ -267,17 +305,27 @@ class System2():
 
 	def fully_analyse_object(self, state_set):
 		condition_set = np.empty((0, 21))
-		difference_set = np.empty((0, 22))
+		transition_set = np.empty((0, 22))
 
 		for i, ss in enumerate(state_set):
 			_, sss = ss.step(4)
 			# object_in_front_difference should only be -1 or 0, or it is disaster
-			object_in_front_difference = np.clip(sss.grid[5,5].argmax() - ss.grid[5,5].argmax(), -1, 1)
+			pos = ss.pos
+			dirc = ss.dir
+			if dirc == 0:
+				dir_pos = (pos[0], pos[1] - 1)
+			elif dirc == 1:
+				dir_pos = (pos[0], pos[1] + 1)
+			elif dirc == 2:
+				dir_pos = (pos[0] - 1, pos[1])
+			elif dirc == 3:
+				dir_pos = (pos[0] + 1, pos[1])
+			object_in_front_difference = np.clip(sss.grid[dir_pos[0], dir_pos[1]].argmax() - ss.grid[dir_pos[0], dir_pos[1]].argmax(), -1, 1)
 			transition = np.expand_dims(np.append(sss.inventory - ss.inventory, object_in_front_difference), axis = 0)
 			condition_set = np.append(condition_set, np.expand_dims(ss.inventory, axis = 0), axis = 0)
-			difference_set = np.append(difference_set, transition, axis = 0)
+			transition_set = np.append(transition_set, transition, axis = 0)
 		
-		return condition_set, difference_set
+		return condition_set, transition_set
 
 
 	def add_to_rule_base(self, condition_set, transition_set, rule_object):
@@ -361,47 +409,135 @@ class System2():
 			tr_gathered = self.rule_dict[key][0]
 			pre_gathered = self.rule_dict[key][1]
 			# Check if transitions are correct, or compounded
-			for transition in tr_gathered:
+			for transition, pre_requisite in zip(tr_gathered, pre_gathered):
 				gt_transitions = self.rule_dict_oracle[key][0]
 				gt_prerequisite = self.rule_dict_oracle[key][1]
-				import ipdb; ipdb.set_trace()
 				matrix = np.append(gt_transitions, np.expand_dims(transition, axis =0), axis = 0)
 				if np.linalg.matrix_rank(matrix) == matrix.shape[0]:
 					# This is a new rule, not present in the oracle
 					incorrect_rules += 1
 				else:
-					# Get coefficient and check pre-requisite accordingly
-					coeff = np.linalg.lstsq(gt_transitions, np.expand_dims(transition, axis =0))
+					'''
+					# Get coefficient and check pre-requisite accordingly				
+					coeff = np.linalg.lstsq(gt_transitions, np.expand_dims(transition, axis =0), rcond=None)
 					if not np.allclose(gt_prerequisite*coeff - pre_gathered):
 						incorrect_rules += 1
 					else:
+						import ipdb; ipdb.set_trace()
 						if coeff.sum() == 1:
 							correct_rules += 1
 						else:
 							compounded_rules += 1
-		
-		import ipdb; ipdb.set_trace()
+					'''
+					# Shortcut
+					compounded = True
+					for g_tr, g_pre in zip(gt_transitions, gt_prerequisite):
+						if (g_tr - transition == 0).all():
+							if (g_pre - pre_requisite == 0).all():
+								correct_rules += 1
+							else:
+								incorrect_rules += 1
+							compounded = False
+							break
+
+					if compounded:
+						compounded_rules += 1
+
 		return correct_rules, compounded_rules, incorrect_rules
+
+
+def get_mean_std(plot_set):
+	max_points = 1e10
+	for x in plot_set:
+		max_points = min(len(x), max_points)
+
+	y = np.zeros((0,max_points))
+
+
+	for x in plot_set:
+		y = np.append(y, np.expand_dims(x[:max_points], axis=0), axis=0)
+
+
+	error = y.std(axis=0)
+	y = y.mean(axis=0)
+
+	return y, error, max_points
+
 
 
 def main():
 	# Initialise agent and rulebook
 	system1 = System1Adapted()
 	system2 = System2()
+
 	# Input playground environment, and link systems
 	environment_handler = EnvironmentHandler()
 	system1.environment_handler = environment_handler
+	
 	# Prepare input
 	#input_system2 = [pickle.load(open("demos.pk", "rb"))[-1], "demo"]
-	input_system2 = [pickle.load(open("custom_maps.pk", "rb")), "env"]
+	#input_system2 = [pickle.load(open("custom_maps.pk", "rb")), "env"]
+	input_system2 = [pickle.load(open("custom_maps.pk", "rb")), "env_specific"]
+	
 	# Feed to system 2
 	if input_system2[1] == "demo":
 		rule_sequence, reachability_set_sequence, event_position_sequence = system2.use_demo(input_system2[0], system1)
+
 	elif input_system2[1] == "env":
-		system2.explore_env(input_system2[0], system1, num_unique_envs = 3, num_envs = 100, max_skills_per_env = 100)
-	#print("Final set of rules: \n\n".format())
-	#for i, rule in enumerate(agent.rule_dict):
-	#		print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
+		correct_set = []
+		compounded_set = []
+		incorrect_set = []
+		total_set = []
+		for _ in range(2):
+			correct, compounded, incorrect, total  = system2.explore_env(input_system2[0], system1, num_unique_envs = 3, num_envs = 1000, max_skills_per_env = 20)
+			correct_set.append(correct)
+			compounded_set.append(compounded)
+			incorrect_set.append(incorrect)
+			total_set.append(total)
+
+		correct_mean, correct_std, max_points = get_mean_std(correct_set)
+		compounded_mean, compounded_std, max_points = get_mean_std(compounded_set)
+		incorrect_mean, incorrect_std, max_points = get_mean_std(incorrect_set)
+		total_mean, total_std, max_points = get_mean_std(total_set)
+
+		from matplotlib import pyplot as plt
+		fig, ax = plt.subplots()
+
+		x = np.linspace(0, max_points-1, max_points)
+		y_oracle = np.asarray([16]*max_points)
+		ax.fill_between(x, correct_mean-correct_std, correct_mean+correct_std, color='g', alpha=0.3)
+		ax.fill_between(x, compounded_mean-compounded_std, compounded_mean+compounded_std, color='b', alpha=0.3)
+		ax.fill_between(x, (incorrect_mean-incorrect_std), (incorrect_mean+incorrect_std), color='r', alpha=0.3)
+		ax.plot(x, y_oracle, 'k--', label='Baseline')
+		ax.plot(x, correct_mean, 'g-', label='Avg. correct rules')
+		ax.plot(x, compounded_mean, 'b-', label='Avg. compounded rules')
+		ax.plot(x, incorrect_mean, 'r-', label='Avg. incorrect rules')
+
+		legend = ax.legend(loc='lower right', shadow=False, fontsize='x-small')
+		plt.title("1000 environments, 20 skills per environment")
+
+		# Put a nicer background color on the legend.
+		# legend.get_frame().set_facecolor('C0')
+		plt.show()
+
+
+	elif input_system2[1] == "env_specific":
+		inventory = np.zeros(21)
+		#inventory[8] = 1
+		#inventory[9] = 1
+		system2.explore_env_specific(np.random.choice(input_system2[0]).init(inventory), system1, [12,7,8])
+		print("\n\n\n\n\n")
+	
+	# Print final rule dict	
+	#for key in self.rule_dict:
+	#	print("Object:", num_string_dict[key])
+	#	if len(self.rule_dict[key][0].shape) == 2:
+	#		for i in range(len(self.rule_dict[key][0])):
+	#			print("Transition:", self.rule_dict[key][0][i].astype(np.int64), "\nPre-requisite:", self.rule_dict[key][1][i].astype(np.int64), "\n")
+	#	else:
+	#		print("Transition:", self.rule_dict[key][0].astype(np.int64), "\nPre-requisite:", self.rule_dict[key][1].astype(np.int64), "\n")
+	#	print("\n")
+
 	import ipdb; ipdb.set_trace()
 	pickle.dump(system2.rule_dict, open("rule_dict.pk", "wb"))
 

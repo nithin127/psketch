@@ -122,6 +122,46 @@ class CraftWorld(object):
 
         return CraftScenario(grid, init_pos, self)
 
+
+    def sample_scenario_custom(self):
+        # generate grid
+        grid = np.zeros((WIDTH, HEIGHT, self.cookbook.n_kinds))
+        i_bd = self.cookbook.index["boundary"]
+        grid[0, :, i_bd] = 1
+        grid[WIDTH-1:, :, i_bd] = 1
+        grid[:, 0, i_bd] = 1
+        grid[:, HEIGHT-1:, i_bd] = 1
+
+        # treasure
+        (gx, gy) = (1 + np.random.randint(WIDTH-2), 1)
+        treasure_index = self.cookbook.index["gold"]
+        grid[gx, gy, treasure_index] = 1
+        for i in range(-1, 2):
+            for j in range(-1, 2):
+                if not grid[gx+i, gy+j, :].any():
+                    wall_index = self.cookbook.index["gem"]
+                    grid[gx+i, gy+j, wall_index] = 1
+            
+        # ingredients
+        for primitive in self.cookbook.primitives:
+            if primitive == self.cookbook.index["gold"] or \
+                    primitive == self.cookbook.index["gem"]:
+                continue
+            for i in range(4):
+                (x, y) = random_free(grid, self.random)
+                grid[x, y, primitive] = 1
+
+        # generate crafting stations
+        for i_ws in range(N_WORKSHOPS):
+            ws_x, ws_y = random_free(grid, self.random)
+            grid[ws_x, ws_y, self.cookbook.index["workshop%d" % i_ws]] = 1
+
+        # generate init pos
+        init_pos = random_free(grid, self.random)
+
+        return CraftScenario(grid, init_pos, self)
+
+
     def visualize(self, transitions):
         def _visualize(win):
             curses.start_color()

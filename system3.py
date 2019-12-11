@@ -579,8 +579,9 @@ def main():
 		# Here, we're using the same environment, we should experiment with multiple environments
 		#
 		objective = system3.infer_objective(rule_sequence, reachability_set_sequence, event_position_sequence)
-		graph_guide = system3.get_dependency_graph_guide(system1.observation_function(demo_model[0]))
-		possible_skill_sequences = system3.play(system1.observation_function(demo_model[0]))
+		new_env = pickle.load(open("env3.pk", "rb"))
+		graph_guide = system3.get_dependency_graph_guide(system1.observation_function(new_env))
+		possible_skill_sequences = system3.play(system1.observation_function(new_env))
 		system3.reset_demo_objectives()
 	#print("Final set of rules: \n\n".format())
 	#for i, rule in enumerate(agent.rule_dict):

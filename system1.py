@@ -158,6 +158,7 @@ class System1():
 			seg, pred = disc(self.current_state_sequence)
 			preds.append(pred)
 			segs.append(seg)
+		print(preds, segs)	
 		if (sum(segs) == 0):
 			self.segmentation_indices.append(self.current_index - 1)
 			self.predict()
@@ -433,7 +434,8 @@ def main():
 	# Train skill discriminators
 	##	In our work, we assume these are already trained properly
 	# Load and pass demonstration "online"
-	demo = pickle.load(open("demos.pk", "rb"))[-1]
+	demo = pickle.load(open("s1_example_suboptimal_demo.pk", "rb"))
+	#demo = pickle.load(open("demos.pk", "rb"))[-1]
 	demo_model = [ fullstate(s) for s in demo ]
 	for state in demo_model:
 		system.next_state(state)
