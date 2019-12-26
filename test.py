@@ -1,4 +1,5 @@
 import pickle
+import numpy as np
 from system2 import System1Adapted, System2
 from system3 import System3, fullstate
 
@@ -21,7 +22,6 @@ all_envs +=  pickle.load(open("maps_iron_gold.pk", "rb"))
 all_envs +=  pickle.load(open("maps_wood_gold.pk", "rb"))
 all_envs +=  pickle.load(open("maps_stone_gold.pk", "rb"))
 all_envs +=  pickle.load(open("maps_water_gold.pk", "rb"))
-
 
 
 # Our method (perfect rule dict)
@@ -48,14 +48,29 @@ rule_sequence, reachability_set_sequence, event_position_sequence = system2.what
 #
 objective = system3.infer_objective(rule_sequence, reachability_set_sequence, event_position_sequence)
 
+success = 0
+failure = 0
 
-import ipdb; ipdb.set_trace()
-
-
-for env in all_envs:
-	graph_guide = system3.get_dependency_graph_guide(system1.observation_function(env))
-	possible_skill_sequences = system3.play(system1.observation_function(env))
-
-
+for i, env in enumerate(all_envs[2:]):
+	state = env
+	observable_env = system1.observation_function(fullstate(state))
+	try:
+		graph_guide = system3.get_dependency_graph_guide(observable_env)
+		possible_skill_sequences = system3.play(observable_env)
+		for skill_params, obj in possible_skill_sequences[0].skills_so_far:
+			observable_env = system1.observation_function(fullstate(state))
+			pos_x, pos_y = np.where(observable_env == 1)
+			action_seq = system1.use_object(observable_env, (pos_x[0], pos_y[0]), skill_params)
+			for a in action_seq:
+				_, state = state.step(a)
+		if state.inventory[10] > 0:
+			success += 1
+		else:
+			failure += 1
+			print("Failure case number: {}".format(i))
+		import ipdb; ipdb.set_trace()
+	except Exception as e:
+		failure += 1
+		print("Failure case number: {}. Exception: {}".format(i, e))
 
 
