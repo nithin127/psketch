@@ -51,26 +51,31 @@ objective = system3.infer_objective(rule_sequence, reachability_set_sequence, ev
 success = 0
 failure = 0
 
-for i, env in enumerate(all_envs[2:]):
+
+#i = 2
+
+
+for i, env in enumerate([all_envs[5]]):
 	state = env
 	observable_env = system1.observation_function(fullstate(state))
-	try:
-		graph_guide = system3.get_dependency_graph_guide(observable_env)
-		possible_skill_sequences = system3.play(observable_env)
-		for skill_params, obj in possible_skill_sequences[0].skills_so_far:
-			observable_env = system1.observation_function(fullstate(state))
-			pos_x, pos_y = np.where(observable_env == 1)
-			action_seq = system1.use_object(observable_env, (pos_x[0], pos_y[0]), skill_params)
-			for a in action_seq:
-				_, state = state.step(a)
-		if state.inventory[10] > 0:
-			success += 1
-		else:
-			failure += 1
-			print("Failure case number: {}".format(i))
-		import ipdb; ipdb.set_trace()
-	except Exception as e:
+	graph_guide = system3.get_dependency_graph_guide(observable_env)
+	#import ipdb; ipdb.set_trace()
+	print(i)
+	state.render()
+	state.render()
+	possible_skill_sequences = system3.play(observable_env)
+	for skill_params, obj in possible_skill_sequences[0].skills_so_far:
+		observable_env = system1.observation_function(fullstate(state))
+		pos_x, pos_y = np.where(observable_env == 1)
+		action_seq = system1.use_object(observable_env, (pos_x[0], pos_y[0]), skill_params)
+		for a in action_seq:
+			_, state = state.step(a)
+	if state.inventory[10] > 0:
+		success += 1
+	else:
 		failure += 1
-		print("Failure case number: {}. Exception: {}".format(i, e))
-
+		print("Failure case number: {}".format(i))
+	state.render()
+	state.render()
+	input()
 

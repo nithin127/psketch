@@ -354,15 +354,20 @@ class System3():
 		nodes = []
 		rewards = []
 		event__rewards = []
+		all_events = []
 		non_reachable_env_node__rewards = []
+		all_non_reachables = []
 		for obj in np.where(inventory_reward > 0)[0]:
-			rule_indices =  np.where(self.rule_dict_transitions_unwrapped[:, obj] >  0)[0]
+			rule_indices = np.where(self.rule_dict_transitions_unwrapped[:, obj] >  0)[0]
 			rules = [self.rule_dict_unwrapped_index[rule_index] for rule_index in rule_indices]
-			for rule in rules: 
+			for rule in rules:
 				event__rewards.append((rule, inventory_reward[obj]))
+				all_events.append(rule)
+		print(node.graph)
+		print(node.state_space)
 		while (len(event__rewards) > 0) or (len(non_reachable_env_node__rewards) > 0):
 			# This is a nice visualisation, comment this out later
-			# input("{}\n{}\n{}\n\n".format(event__rewards, non_reachable_env_node__rewards, nodes))
+			input("event:{}\nnon_reachable:{}\nnodes:{}\n\n".format(event__rewards, non_reachable_env_node__rewards, nodes))
 			# Going through core graph skeleton
 			if len(event__rewards) > 0:
 				event, reward = event__rewards.pop()
@@ -373,7 +378,9 @@ class System3():
 					env_nodes = graph["node_pos"][event[0]]
 					for env_node in env_nodes:
 						if env_node in graph["node_pos_dependencies"].keys():
-							non_reachable_env_node__rewards.append((env_node, reward*gamma))
+							if env_node not in all_non_reachables:
+								non_reachable_env_node__rewards.append((env_node, reward*gamma))
+								all_non_reachables.append(env_node)
 						else:
 							nodes.append(env_node)
 							rewards.append(reward)
@@ -389,7 +396,9 @@ class System3():
 								already_satisfied = inventory[obj]
 							new_reward = reward*gamma - already_satisfied
 							if new_reward > 0:
-								event__rewards.append((event, new_reward))
+								if event not in all_events:
+									event__rewards.append((event, new_reward))
+									all_events.append(event)
 							else:
 								pass
 			else:
@@ -401,16 +410,20 @@ class System3():
 				event_found = False
 				event__rewards_appendage = []
 				for dep_obj_pos, possible_event in possible_events:
-					event__rewards_appendage.append((possible_event, reward))
 					if (inventory - self.rule_dict[possible_event[0]][1][possible_event[1]] >= 0).all():
-						nodes.append(dep_obj_pos)	
-						rewards.append(reward)
-						event_found = True
-						break
+						if dep_obj_pos in graph["node_pos_dependencies"].keys():
+							if dep_obj_pos not in all_non_reachables:
+								non_reachable_env_node__rewards.append((dep_obj_pos, reward*gamma))
+								all_non_reachables.append(dep_obj_pos)
+						else:
+							nodes.append(dep_obj_pos)	
+							rewards.append(reward)
+							event_found = True
 					else:
-						pass
+						event__rewards_appendage.append((possible_event, reward))
 				if not event_found:
 					event__rewards += event__rewards_appendage
+					all_events += [e for e, r in event__rewards_appendage]
 			else:
 				pass
 		# Remove duplicates here, keep the ones with higher costs
