@@ -19,13 +19,6 @@ train_env = pickle.load(open("maps__train.pk", "rb"))
 
 system1 = System1Adapted()
 system2 = System2()
-
-# Build rule dict
-
-# Option 1: demo only
-rule_sequence, reachability_set_sequence, event_position_sequence = system2.use_demo(demo, system1)
-
-
 system2.rule_dict = pickle.load(open("rule_dict.pk", "rb"))
 system3 = System3(system2.rule_dict)
 
@@ -64,7 +57,6 @@ for i, env in enumerate(train_env[21:]):
 	input("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i+21))
 	possible_skill_sequences = system3.play(observable_env)
 	#import ipdb; ipdb.set_trace()
-	"""
 	for skill_params, obj in possible_skill_sequences[0].skills_so_far:
 		observable_env = system1.observation_function(fullstate(state))
 		pos_x, pos_y = np.where(observable_env == 1)
@@ -78,5 +70,5 @@ for i, env in enumerate(train_env[21:]):
 		print("Failure case number: {}".format(i))
 	state.render()
 	state.render()
-	"""
+	
 

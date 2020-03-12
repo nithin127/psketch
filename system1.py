@@ -158,7 +158,7 @@ class System1():
 			seg, pred = disc(self.current_state_sequence)
 			preds.append(pred)
 			segs.append(seg)
-		print(preds, segs)	
+		#print(preds, segs)	
 		if (sum(segs) == 0):
 			self.segmentation_indices.append(self.current_index - 1)
 			self.predict()

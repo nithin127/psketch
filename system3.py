@@ -324,6 +324,8 @@ class System3():
 	def get_dependency_graph_guide(self, initial_config):
 		# Let's form the graph skeleton: we're assuming this would not be an AND/OR graph
 		leftover_keys = self.independent_events + self.reusable_events
+		x, y = np.where(initial_config%1==0.5)
+		initial_config[x[0], y[0]] = initial_config[x[0], y[0]] + 0.5
 		# Core skeleton
 		graph_nodes = []
 		graph_skeleton = {}
@@ -363,11 +365,11 @@ class System3():
 			for rule in rules:
 				event__rewards.append((rule, inventory_reward[obj]))
 				all_events.append(rule)
-		print(node.graph)
-		print(node.state_space)
+		#print(node.graph)
+		#input(node.state_space)
 		while (len(event__rewards) > 0) or (len(non_reachable_env_node__rewards) > 0):
 			# This is a nice visualisation, comment this out later
-			input("event:{}\nnon_reachable:{}\nnodes:{}\n\n".format(event__rewards, non_reachable_env_node__rewards, nodes))
+			# input("event:{}\nnon_reachable:{}\nnodes:{}\n\n".format(event__rewards, non_reachable_env_node__rewards, nodes))
 			# Going through core graph skeleton
 			if len(event__rewards) > 0:
 				event, reward = event__rewards.pop()
@@ -544,9 +546,27 @@ class System3():
 		# Graph search
 		count = 0
 		while len(to_search) > 0:
+			# Clean up the search space
+			clean_up_index = []
+			for i, node in enumerate(to_search):
+				#print("cost: {}, reward:{}, skills:{}".format(node.cost_so_far, node.reward_so_far, node.skills_so_far))
+				# Shortcut, hihi. We can use the maximum reward and the cost to reward ratio to finetune this, but for now. This is good
+				for sol in solutions:
+					if node.cost_so_far >= sol.cost_so_far:
+						clean_up_index.append(i)
+			clean_up_index = list(set(clean_up_index))
+			for i, ind in enumerate(clean_up_index):
+				_ = to_search.pop(ind - i)
+			if len(to_search) == 0:
+				break
+			# Okay great
+			#print("\n")
+			print("to search: {}; solutions:{}; costs:{}".format(len(to_search), len(solutions), [sol.cost_so_far for sol in solutions]))
+			#input(initial_config)
 			count += 1
 			node = to_search.pop(0)
 			available_options, costs = self.get_next_options(node, use_graph_guide)
+			new_nodes = []
 			# Running through possible options
 			for option, cost in zip(available_options, costs):
 				new_node, change = self.approximate_transition_step(node, option, cost, use_graph_guide)
@@ -564,7 +584,8 @@ class System3():
 					for i, ind in enumerate(indices_to_remove):
 						_ = solutions.pop(ind - i)
 				# Should we further search this node. As of now, we're just saying yes to everything
-				to_search.append(new_node)
+				new_nodes.append(new_node)
+			to_search = new_nodes + to_search
 				# print(count, len(solutions), len(to_search))
 		return solutions
 
