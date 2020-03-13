@@ -31,6 +31,7 @@ demo_rule_dict = np.random.choice(demos_rule_dict['1layer'])
 
 
 rule_sequence, reachability_set_sequence, event_position_sequence = system2.use_demo(demo_rule_dict, system1)
+# Add random exploration here
 system3 = System3(system2.rule_dict)
 
 
