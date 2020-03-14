@@ -58,6 +58,7 @@ objective = system3.infer_objective(rule_sequence, reachability_set_sequence, ev
 
 
 success = 0
+success_cases = []
 failure = 0
 failure_cases = []
 
@@ -86,6 +87,7 @@ for i, env in enumerate(train_env):
 				_, state = state.step(a)
 		if state.inventory[10] > 0:
 			success += 1
+			success_cases.append(i)
 		else:
 			failure += 1
 			failure_cases.append(i)

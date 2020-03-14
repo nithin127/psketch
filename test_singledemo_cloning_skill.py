@@ -28,6 +28,7 @@ segmentation_index, skill_sequence = system1.result()
 # Just replicating the skill sequence
 
 success = 0
+success_cases = []
 failure = 0
 failure_cases = []
 
@@ -59,6 +60,7 @@ for i, env in enumerate(train_env):
 					pass
 		if state.inventory[10] > 0:
 			success += 1
+			success_cases.append(i)
 		else:
 			failure += 1
 			failure_cases.append(i)
