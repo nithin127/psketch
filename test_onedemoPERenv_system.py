@@ -32,16 +32,19 @@ if dict_type == "oracle":
 	system2.rule_dict = system2.rule_dict_oracle
 
 elif dict_type == "demo":
-	demo_type_string = np.random.choice(["1layer", "2layer", "3layer", "gem_gold", "grass_gold", "iron_gold", "stone_gold", "water_gold", "wood_gold"])
-	demos_rule_dict = pickle.load(open("demos_" + demo_type_string + ".pk", "rb"))
-	demo_rule_dict = np.random.choice(demos_rule_dict['1layer'])
-	rule_sequence, reachability_set_sequence, event_position_sequence = system2.use_demo(demo_rule_dict, system1)
+	demo_type_strings = ["1layer", "2layer", "3layer", "gem_gold", "grass_gold", "iron_gold", "stone_gold", "water_gold", "wood_gold"]
+	for demo_string in demo_type_strings:
+		demos_rule_dict = pickle.load(open("demos_" + demo_string + ".pk", "rb"))
+		demo_rule_dict = np.random.choice(demos_rule_dict['1layer'])
+		rule_sequence, reachability_set_sequence, event_position_sequence = system2.use_demo(demo_rule_dict, system1)
 
 elif dict_type == "demo_explore":
-	demo_type_string = np.random.choice(["1layer", "2layer", "3layer", "gem_gold", "grass_gold", "iron_gold", "stone_gold", "water_gold", "wood_gold"])
-	demos_rule_dict = pickle.load(open("demos_" + demo_type_string + ".pk", "rb"))
-	demo_rule_dict = np.random.choice(demos_rule_dict['1layer'])
-	rule_sequence, reachability_set_sequence, event_position_sequence = system2.use_demo(demo_rule_dict, system1)
+	demo_type_strings = ["1layer", "2layer", "3layer", "gem_gold", "grass_gold", "iron_gold", "stone_gold", "water_gold", "wood_gold"]
+	for demo_string in demo_type_strings:
+		demos_rule_dict = pickle.load(open("demos_" + demo_string + ".pk", "rb"))
+		demo_rule_dict = np.random.choice(demos_rule_dict['1layer'])
+		rule_sequence, reachability_set_sequence, event_position_sequence = system2.use_demo(demo_rule_dict, system1)
+
 	correct, compounded, incorrect, total  = system2.explore_env(input_system2[0], system1, num_unique_envs = 3, num_envs = 100, max_skills_per_env = 20)
 
 else:
