@@ -476,8 +476,8 @@ def main():
 	
 	# Prepare input
 	#input_system2 = [pickle.load(open("demos.pk", "rb"))[-1], "demo"]
-	#input_system2 = [pickle.load(open("custom_maps.pk", "rb")), "env"]
-	input_system2 = [pickle.load(open("custom_maps.pk", "rb")), "env_specific"]
+	input_system2 = [pickle.load(open("custom_maps.pk", "rb")), "env"]
+	#input_system2 = [pickle.load(open("custom_maps.pk", "rb")), "env_specific"]
 	
 	# Feed to system 2
 	if input_system2[1] == "demo":
@@ -489,7 +489,7 @@ def main():
 		incorrect_set = []
 		total_set = []
 		for _ in range(2):
-			correct, compounded, incorrect, total  = system2.explore_env(input_system2[0], system1, num_unique_envs = 3, num_envs = 1000, max_skills_per_env = 20)
+			correct, compounded, incorrect, total  = system2.explore_env(input_system2[0], system1, num_unique_envs = 3, num_envs = 100, max_skills_per_env = 20)
 			correct_set.append(correct)
 			compounded_set.append(compounded)
 			incorrect_set.append(incorrect)
@@ -539,7 +539,7 @@ def main():
 	#	print("\n")
 
 	import ipdb; ipdb.set_trace()
-	pickle.dump(system2.rule_dict, open("rule_dict.pk", "wb"))
+	pickle.dump(system2.rule_dict, open("rule_dict_new.pk", "wb"))
 
 
 
