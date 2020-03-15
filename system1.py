@@ -142,6 +142,8 @@ class System1():
 		self.current_state_sequence = []
 		self.current_segmentation_array = []
 		self.current_prediction_array = []
+		self.segmentation_indices = []
+		self.current_index = 0
 		self.events = []
 		
 

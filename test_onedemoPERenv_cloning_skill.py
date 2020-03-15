@@ -2,6 +2,32 @@ import pickle
 import numpy as np
 from system3 import *
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+
+
+# Defining model for BC
+
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv1 = nn.Conv2d(1, 3, 3)
+        self.conv2 = nn.Conv2d(3, 1, 3)
+        self.fc1 = nn.Linear(8 * 8 + 21, 32)
+        self.fc2 = nn.Linear(32, 10)
+        
+    def forward(self, x1, x2):
+        x1 = F.relu(self.conv1(x1))
+        x1 = F.relu(self.conv2(x1))
+        x1 = x1.view(-1, 8 * 8)
+        x = torch.cat((x1, x2), 1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return x
+
+
 
 # Single demonstration
 
@@ -34,26 +60,28 @@ else:
 
 # Prepare dataset
 
-x1 = []
-x2 = []
+x1 = np.zeros((0,1,12,12))
+x2 = np.zeros((0,21))
 y = []
 
 
 demo_type_strings = ["1layer", "2layer", "3layer", "gem_gold", "grass_gold", "iron_gold", "stone_gold", "water_gold", "wood_gold"]
-for demo_string in demo_type_strings:
+for demo_string in [demo_type_strings[0]]:
 	demos_rule_dict = pickle.load(open("demos_" + demo_string + ".pk", "rb"))
-	for demo in demos_rule_dict['1layer']:
+	for i, demo in enumerate(demos_rule_dict['1layer']):
 		demo_model = [ fullstate(s) for s in demo ]
 		for state in demo_model:
 			system1.next_state(state)
 		segmentation_index, skill_sequence = system1.result()
+		system1.restart()
 		segmentation_index = [0] + segmentation_index
 		inventory = np.zeros(21)
 		for index, skill in zip(segmentation_index, skill_sequence):
 			curr_state = system1.observation_function(demo_model[index])
-			x1.append(curr_state)
-			x2.append(inventory.copy())
-			y.append(skill['object_before'])
+			x1 = np.append(x1, np.expand_dims(np.expand_dims(curr_state, 0), 0), axis=0)
+			x2 = np.append(x2, np.expand_dims(inventory.copy(), 0), axis=0)
+			# Minus 3 is to adjust the classification categories
+			y.append(skill['object_before'] - 3)
 			# Update inventory as per rule base
 			if rule_base_access:
 				rule_tr = system2.rule_dict_oracle[skill['object_before']][0]
@@ -66,14 +94,39 @@ for demo_string in demo_type_strings:
 		
 
 # Prepare model
-import ipdb; ipdb.set_trace()
+net = Net()
+net = net.float()
 
-## Conv layer
-## Add x2 to the flat layer
-## Converge to a single thing
 ## L2 loss
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
 # Train
+
+for epoch in range(2):  # loop over the dataset multiple times
+
+    running_loss = 0.0
+    for i in range(1000):
+        
+        # zero the parameter gradients
+        optimizer.zero_grad()
+
+        # forward + backward + optimize
+        y_guess = net(torch.tensor(x1).type(torch.float32), torch.tensor(x2).type(torch.float32))
+        loss = criterion(y_guess, torch.tensor(y).type(torch.LongTensor))
+        loss.backward()
+        optimizer.step()
+
+        # print statistics
+        running_loss += loss.item()
+        if i % 20 == 19:    # print every 2000 mini-batches
+            print('[%d, %5d] loss: %.3f' %
+                  (epoch + 1, i + 1, running_loss / 20))
+            running_loss = 0.0
+
+print('Finished Training')
+
+
 
 
 
