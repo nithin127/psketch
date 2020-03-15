@@ -121,10 +121,10 @@ optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
 # Train
 
-for epoch in range(20):  
+for epoch in range(1):  
 
     running_loss = 0.0
-    for i in range(10000): # loop over the dataset multiple times
+    for i in range(5000): # loop over the dataset multiple times
         
         # zero the parameter gradients
         optimizer.zero_grad()
@@ -147,9 +147,6 @@ for epoch in range(20):
 print('Finished Training')
 
 
-import ipdb; ipdb.set_trace()
-
-
 		
 success = 0
 success_cases = []
@@ -164,35 +161,39 @@ for i, env in enumerate(train_env):
 	state.render()
 	state.render()
 	input("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
-	try:
-		for event in skill_sequence:
-			observable_env = system1.observation_function(fullstate(state))
-			pos_x, pos_y = np.where(observable_env == 1)
-			done = False
-			possible_objects = np.where(observable_env == event["object_before"])
-			for skill_param_x, skill_param_y in zip(possible_objects[0], possible_objects[1]):
-				if done:
+
+	for _ in range(25): # Max skills
+		import ipdb; ipdb.set_trace()
+		observable_env = system1.observation_function(fullstate(state))
+		skill_prob = net(np.expand_dims(np.expand_dims(observable_env, 0), 0), \
+			np.expand_dims(state.inventory, 0))
+
+		done = False
+		possible_objects = np.where(observable_env == skill_prob.argmax())
+		for skill_param_x, skill_param_y in zip(possible_objects[0], possible_objects[1]):
+			if done:
+				break
+			try:
+				action_seq = system1.use_object(observable_env, (pos_x[0], pos_y[0]), (skill_param_x, skill_param_y))
+				if len(action_seq) > 0 and action_seq[-1] == 4:
+					done = True
+					for a in action_seq:
+						_, state = state.step(a)
 					break
-				try:
-					action_seq = system1.use_object(observable_env, (pos_x[0], pos_y[0]), (skill_param_x, skill_param_y))
-					if len(action_seq) > 0 and action_seq[-1] == 4:
-						done = True
-						for a in action_seq:
-							_, state = state.step(a)
-						break
-				except:
-					pass
+			except:
+				pass
+
 		if state.inventory[10] > 0:
 			success += 1
-			success_cases.append(i)
-		else:
-			failure += 1
-			failure_cases.append(i)
-	except:
+			success_cases.append(i)		
+			break
+
+	if state.inventory[10] == 0:
 		failure += 1
 		failure_cases.append(i)
 	state.render()
 	state.render()
 	
+
 print("Success:{}, Failure:{}".format(success, failure))
 import ipdb; ipdb.set_trace()
