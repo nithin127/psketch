@@ -9,3 +9,4 @@ run.sh.complete
 slurm*
 job.sh
 *.pk
+*.pt

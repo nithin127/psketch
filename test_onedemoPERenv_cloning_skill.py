@@ -115,36 +115,52 @@ else:
 net = Net()
 net = net.float()
 
-## L2 loss
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
-# Train
+load_model = True
+save_model = True
 
-for epoch in range(1):  
 
-    running_loss = 0.0
-    for i in range(5000): # loop over the dataset multiple times
-        
-        # zero the parameter gradients
-        optimizer.zero_grad()
+if load_model and os.path.exists('mytraining.pt'):
+	print("Loading Model")
+	checkpoint = torch.load('mytraining.pt')
+	net.load_state_dict(checkpoint['state_dict'])
+else:
+	## L2 loss
+	criterion = nn.CrossEntropyLoss()
+	optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
-        # forward + backward + optimize
-        y_guess = net(torch.tensor(x1).type(torch.float32), torch.tensor(x2).type(torch.float32))
-        loss = criterion(y_guess, torch.tensor(y).type(torch.LongTensor))
-        loss.backward()
-        optimizer.step()
+	# Train
 
-        # print statistics
-        running_loss += loss.item()
-        if i % 20 == 19:    # print every 2000 mini-batches
-            print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 20))
-            running_loss = 0.0
-            #if np.isclose(running_loss, 0.0):
-            #	break
+	for epoch in range(1):  
 
-print('Finished Training')
+	    running_loss = 0.0
+	    for i in range(5000): # loop over the dataset multiple times
+	        
+	        # zero the parameter gradients
+	        optimizer.zero_grad()
+
+	        # forward + backward + optimize
+	        y_guess = net(torch.tensor(x1).type(torch.float32), torch.tensor(x2).type(torch.float32))
+	        loss = criterion(y_guess, torch.tensor(y).type(torch.LongTensor))
+	        loss.backward()
+	        optimizer.step()
+
+	        # print statistics
+	        running_loss += loss.item()
+	        if i % 20 == 19:    # print every 2000 mini-batches
+	            print('[%d, %5d] loss: %.3f' %
+	                  (epoch + 1, i + 1, running_loss / 20))
+	            running_loss = 0.0
+	            #if np.isclose(running_loss, 0.0):
+	            #	break
+
+	print('Finished Training')
+	if save_model:
+		torch.save({'state_dict': net.state_dict(), 'optimizer' : optimizer.state_dict()}, \
+			'mytraining.pt')
+		print('Model Saved')
+	else:
+		pass
 
 
 		
@@ -161,16 +177,17 @@ for i, env in enumerate(train_env):
 	state.render()
 	state.render()
 	input("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
+	skill_seq = []
 
 	for _ in range(25): # Max skills
-		import ipdb; ipdb.set_trace()
 		observable_env = system1.observation_function(fullstate(state))
-		skill_prob = net(np.expand_dims(np.expand_dims(observable_env, 0), 0), \
-			np.expand_dims(state.inventory, 0))
+		skill_prob = net(torch.tensor(np.expand_dims(np.expand_dims(observable_env, 0), 0)).type(torch.float32), \
+			torch.tensor(np.expand_dims(state.inventory, 0)).type(torch.float32))
 
 		done = False
-		possible_objects = np.where(observable_env == skill_prob.argmax())
+		possible_objects = np.where(observable_env == skill_prob.argmax().item() + 3)
 		for skill_param_x, skill_param_y in zip(possible_objects[0], possible_objects[1]):
+			pos_x, pos_y = np.where(observable_env == 1)
 			if done:
 				break
 			try:
@@ -179,10 +196,12 @@ for i, env in enumerate(train_env):
 					done = True
 					for a in action_seq:
 						_, state = state.step(a)
+					skill_seq.append(skill_prob.argmax().item() + 3)
 					break
 			except:
+				print("Skill_params: {} failed".format((skill_param_x, skill_param_y)))
 				pass
-
+				
 		if state.inventory[10] > 0:
 			success += 1
 			success_cases.append(i)		
@@ -191,8 +210,11 @@ for i, env in enumerate(train_env):
 	if state.inventory[10] == 0:
 		failure += 1
 		failure_cases.append(i)
+	
 	state.render()
 	state.render()
+	print("\n\n\n\n\n")
+	print(skill_seq)
 	
 
 print("Success:{}, Failure:{}".format(success, failure))
