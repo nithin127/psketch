@@ -72,8 +72,8 @@ else:
 
 # Prepare dataset
 
-if os.path.exists("skill_clone_dataset.pk"):
-	x1, x2, y = pickle.load(open("skill_clone_dataset.pk", "rb"))
+if os.path.exists("action_clone_dataset.pk"):
+	x1, x2, y = pickle.load(open("action_clone_dataset.pk", "rb"))
 
 else:
 	x1 = np.zeros((0,1,12,12))
@@ -85,30 +85,63 @@ else:
 	for demo_string in demo_type_strings:
 		demos_rule_dict = pickle.load(open("demos_" + demo_string + ".pk", "rb"))
 		for i, demo in enumerate(demos_rule_dict['1layer']):
-			demo_model = [ fullstate(s) for s in demo ]
-			for state in demo_model:
-				system1.next_state(state)
-			segmentation_index, skill_sequence = system1.result()
-			system1.restart()
-			segmentation_index = [0] + segmentation_index
+
+			prev_state = demo[0]
+			prev_state = system1.observation_function(fullstate(prev_state))
 			inventory = np.zeros(21)
-			for index, skill in zip(segmentation_index, skill_sequence):
-				curr_state = system1.observation_function(demo_model[index])
-				x1 = np.append(x1, np.expand_dims(np.expand_dims(curr_state, 0), 0), axis=0)
+			
+			for state in demo[1:]:
+				state = system1.observation_function(fullstate(state))
+				x1 = np.append(x1, np.expand_dims(np.expand_dims(state, 0), 0), axis=0)
 				x2 = np.append(x2, np.expand_dims(inventory.copy(), 0), axis=0)
-				# Minus 3 is to adjust the classification categories
-				y.append(skill['object_before'] - 3)
-				# Update inventory as per rule base
-				if rule_base_access:
-					rule_tr = system2.rule_dict_oracle[skill['object_before']][0]
-					rule_pre = system2.rule_dict_oracle[skill['object_before']][1]
-					for tr, pre in zip(rule_tr, rule_pre):
-						if (inventory - pre >= 0).all():
-							inventory += tr[:-1]
+				
+				px, py = np.where(prev_state == 1)
+				cx, cy = np.where(state == 1)
+				if cy - py == 1:
+					assert px == cx
+					y.append(1)
+				elif cy - py == -1:
+					assert px == cx
+					y.append(0)
 				else:
-					pass
-	
-	pickle.dump((x1, x2, y), open("skill_clone_dataset.pk", "wb"))
+					if cx - px == 1:
+						assert cy == py
+						y.append(3)
+					elif cx - px == -1:
+						assert cy == py
+						y.append(2)
+					elif cy == py and cx == px:
+						pdx, pdy = np.where(prev_state % 1 == 0.5)
+						cdx, cdy = np.where(state % 1 == 0.5)
+						if pdx == cdx and pdy == cdy:
+							y.append(4)
+							# Also update the estimated inventory
+							if rule_base_access:
+								object_in_front = state[cdx, cdy] + 0.5
+								rule_tr = system2.rule_dict_oracle[object_in_front][0]
+								rule_pre = system2.rule_dict_oracle[object_in_front][1]
+								for tr, pre in zip(rule_tr, rule_pre):
+									if (inventory - pre >= 0).all():
+										inventory += tr[:-1]
+						else:
+							# Here we go again
+							if cdy - cy == 1:
+								assert cx == cdx
+								y.append(1)
+							elif cdy - cy == -1:
+								assert cx == cdx
+								y.append(0)
+							else:
+								if cdx - cx == 1:
+									assert cdy == cy
+									y.append(3)
+								elif cdx - cx == -1:
+									assert cdy == cy
+									y.append(2)
+				# Now that we have the direction
+				prev_state = state
+
+	pickle.dump((x1, x2, y), open("action_clone_dataset.pk", "wb"))
 
 
 # Prepare model
@@ -135,16 +168,11 @@ else:
 
 	    running_loss = 0.0
 	    for i in range(5000): # loop over the dataset multiple times
-
+	        
 	        # zero the parameter gradients
 	        optimizer.zero_grad()
 
 	        # forward + backward + optimize
-
-	        ##
-	        # Jumble dataset !
-	        ##
-
 	        y_guess = net(torch.tensor(x1).type(torch.float32), torch.tensor(x2).type(torch.float32))
 	        loss = criterion(y_guess, torch.tensor(y).type(torch.LongTensor))
 	        loss.backward()
@@ -182,44 +210,26 @@ for i, env in enumerate(train_env):
 	state.render()
 	state.render()
 	input("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
-	skill_seq = []
+	action_seq = []
 
-	for _ in range(25): # Max skills
+	for _ in range(125): # Max skills
 		observable_env = system1.observation_function(fullstate(state))
-		skill_prob = net(torch.tensor(np.expand_dims(np.expand_dims(observable_env, 0), 0)).type(torch.float32), \
+		action_prob = net(torch.tensor(np.expand_dims(np.expand_dims(observable_env, 0), 0)).type(torch.float32), \
 			torch.tensor(np.expand_dims(state.inventory, 0)).type(torch.float32))
+		_, state = state.step(action_prob.argmax().item())
+		action_seq.append(action_prob.argmax().item())
 
-		done = False
-		possible_objects = np.where(observable_env == skill_prob.argmax().item() + 3)
-		for skill_param_x, skill_param_y in zip(possible_objects[0], possible_objects[1]):
-			pos_x, pos_y = np.where(observable_env == 1)
-			if done:
-				break
-			try:
-				action_seq = system1.use_object(observable_env, (pos_x[0], pos_y[0]), (skill_param_x, skill_param_y))
-				if len(action_seq) > 0 and action_seq[-1] == 4:
-					done = True
-					for a in action_seq:
-						_, state = state.step(a)
-					skill_seq.append(skill_prob.argmax().item() + 3)
-					break
-			except:
-				print("Skill_params: {} failed".format((skill_param_x, skill_param_y)))
-				pass
-				
 		if state.inventory[10] > 0:
 			success += 1
-			success_cases.append(i)		
-			break
-
-	if state.inventory[10] == 0:
-		failure += 1
-		failure_cases.append(i)
+			success_cases.append(i)
+		else:
+			failure += 1
+			failure_cases.append(i)
 	
 	state.render()
 	state.render()
 	print("\n\n\n\n\n")
-	print(skill_seq)
+	print(action_seq)
 	
 
 print("Success:{}, Failure:{}".format(success, failure))
