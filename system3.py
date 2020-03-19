@@ -561,7 +561,9 @@ class System3():
 				break
 			# Okay great
 			#print("\n")
-			print("to search: {}; solutions:{}; costs:{}".format(len(to_search), len(solutions), [sol.cost_so_far for sol in solutions]))
+			if count % 19 == 0:
+				print("count: {}, to search: {}; solutions:{}; costs:{}"\
+					.format(count, len(to_search), len(solutions), [sol.cost_so_far for sol in solutions]))
 			#input(initial_config)
 			count += 1
 			node = to_search.pop(0)
@@ -573,6 +575,7 @@ class System3():
 				if not change:
 					continue
 				if (new_node.inventory - self.required_inventory >= 0).all():
+					#if self.cross_check(new_node, self.required_inventory):
 					indices_to_remove = []
 					pareto_front = True
 					for i, prev_sol in enumerate(solutions):
@@ -586,8 +589,10 @@ class System3():
 				# Should we further search this node. As of now, we're just saying yes to everything
 				new_nodes.append(new_node)
 			to_search = new_nodes + to_search
-				# print(count, len(solutions), len(to_search))
+			if count % 9999 == 0:
+				break
 		return solutions
+
 
 
 def main():
@@ -621,7 +626,7 @@ def main():
 	#for i, rule in enumerate(agent.rule_dict):
 	#		print("Rule Number:{} || obj:{}\nrules:{}\nconditions:{}\n\n".format(i, rule["object"], rule["rules"], rule["conditions"]))
 	import ipdb; ipdb.set_trace()
-		
+
 
 
 if __name__ == "__main__":

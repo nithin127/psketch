@@ -131,7 +131,7 @@ class System2():
 		self.reachability_set_sequence = []
 		self.event_position_sequence = []
 		self.current_inventory = np.zeros(21)
-		self.rule_dict_oracle = pickle.load(open("rule_dict.pk", "rb"))
+		self.rule_dict_oracle = pickle.load(open("rule_dict_oracle.pk", "rb"))
 		self.craft_scenario = CraftScenario		
 		self.craft_world = CraftWorld		
 
@@ -261,23 +261,27 @@ class System2():
 				try:
 					action_sequence = system1.use_object(agent_obs, (agent_pos[0], agent_pos[1]), \
 					(skill_options[0][option], skill_options[1][option]))
-				except:
-					pass
-				if action_sequence[-1] == 4:
-					for a in action_sequence[:-1]:
-						_, state = state.step(a)
-					prev_inventory_set, transition_set = self.fully_analyse_object([state])
-					success = self.add_to_rule_base(prev_inventory_set, transition_set, obj)
-					correct_rules, compounded_rules, incorrect_rules = self.analyse_rule_base()
-					correct_rules_growth.append(correct_rules)
-					compounded_rules_growth.append(compounded_rules)
-					incorrect_rules_growth.append(incorrect_rules)
-					total_rules_growth.append(correct_rules+incorrect_rules+compounded_rules)
+					if action_sequence[-1] == 4:
+						for a in action_sequence[:-1]:
+							_, state = state.step(a)
+						# Cross check before updating rule base
+						dirx, diry = np.where(system1.observation_function(fullstate(state)) % 1 == 0.5)
+						#assert(system1.observation_function(fullstate(state))[dirx, diry] + 0.5 == obj)
+						prev_inventory_set, transition_set = self.fully_analyse_object([state])
+						success = self.add_to_rule_base(prev_inventory_set, transition_set, obj)
+						correct_rules, compounded_rules, incorrect_rules = self.analyse_rule_base()
+						correct_rules_growth.append(correct_rules)
+						compounded_rules_growth.append(compounded_rules)
+						incorrect_rules_growth.append(incorrect_rules)
+						total_rules_growth.append(correct_rules+incorrect_rules+compounded_rules)
 
-					print (success, (correct_rules, compounded_rules, incorrect_rules), [len(self.rule_dict[key][0]) for key in self.rule_dict.keys()])
-						
-					_, state = state.step(action_sequence[-1])
-				else:
+						print (success, (correct_rules, compounded_rules, incorrect_rules), [len(self.rule_dict[key][0]) for key in self.rule_dict.keys()])
+							
+						_, state = state.step(action_sequence[-1])
+					else:
+						pass
+				except Exception as e:
+					print("Exception happened: ", e)
 					pass
 				#if obj in state_set.keys():
 				#	state_set[obj].append(state)
@@ -412,7 +416,7 @@ class System2():
 			for transition, pre_requisite in zip(tr_gathered, pre_gathered):
 				gt_transitions = self.rule_dict_oracle[key][0]
 				gt_prerequisite = self.rule_dict_oracle[key][1]
-				matrix = np.append(gt_transitions, np.expand_dims(transition, axis =0), axis = 0)
+				matrix = np.append(gt_transitions, np.expand_dims(transition, axis = 0), axis = 0)
 				if np.linalg.matrix_rank(matrix) == matrix.shape[0]:
 					# This is a new rule, not present in the oracle
 					incorrect_rules += 1
@@ -488,8 +492,8 @@ def main():
 		compounded_set = []
 		incorrect_set = []
 		total_set = []
-		for _ in range(2):
-			correct, compounded, incorrect, total  = system2.explore_env(input_system2[0], system1, num_unique_envs = 3, num_envs = 100, max_skills_per_env = 20)
+		for _ in range(4):
+			correct, compounded, incorrect, total  = system2.explore_env(input_system2[0], system1, num_unique_envs = 3, num_envs = 100, max_skills_per_env = 15)
 			correct_set.append(correct)
 			compounded_set.append(compounded)
 			incorrect_set.append(incorrect)
@@ -514,7 +518,7 @@ def main():
 		ax.plot(x, incorrect_mean, 'r-', label='Avg. incorrect rules')
 
 		legend = ax.legend(loc='lower right', shadow=False, fontsize='x-small')
-		plt.title("1000 environments, 20 skills per environment")
+		plt.title("100 environments, 15 skills per environment")
 
 		# Put a nicer background color on the legend.
 		# legend.get_frame().set_facecolor('C0')
@@ -539,7 +543,8 @@ def main():
 	#	print("\n")
 
 	import ipdb; ipdb.set_trace()
-	pickle.dump(system2.rule_dict, open("rule_dict_new.pk", "wb"))
+	# for key in system2.rule_dict.keys(): system2.rule_dict[key]; system2.rule_dict_oracle[key]; print("\n\n")
+	pickle.dump(system2.rule_dict, open("rule_dict_demo_explore_3_100_20.pk", "wb"))
 
 
 
