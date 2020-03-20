@@ -77,5 +77,8 @@ for i, env in enumerate(test_env):
 	
 print("\n\n\n\n")
 for s in success_cases: print(s)
-print("Avg. time taken: {}, Success:{}, Failure:{}".format(total_time/success, success, failure))
+if success > 0:
+	print("Avg. time taken: {}, Success:{}, Failure:{}".format(total_time/success, success, failure))
+else:
+	print("Success:{}, Failure:{}".format(success, failure))
 import ipdb; ipdb.set_trace()

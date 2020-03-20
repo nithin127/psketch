@@ -112,16 +112,5 @@ Test
 Method 	|  Accuracy 	| Time 			| Lengths
 
 
-oracle 	|  100%			| 2.58 secs		| 0
-demo	|  
-
-6/33
-
-
-
------
-
-demo explore
-
 
 
