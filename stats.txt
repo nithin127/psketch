@@ -1,3 +1,8 @@
+1 = 0.493 (around that)
+2 = 2.257 
+
+
+
 Training maps: Goal-wise Stats
 
 10:==

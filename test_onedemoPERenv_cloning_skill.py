@@ -1,4 +1,5 @@
-import os, pickle
+import os, time
+import pickle
 import numpy as np
 from system3 import *
 
@@ -116,7 +117,7 @@ net = Net()
 net = net.float()
 
 
-load_model = True
+load_model = False
 save_model = True
 
 
@@ -162,7 +163,7 @@ else:
 	print('Finished Training')
 	if save_model:
 		torch.save({'state_dict': net.state_dict(), 'optimizer' : optimizer.state_dict()}, \
-			'mytraining.pt')
+			'mytraining_2.pt')
 		print('Model Saved')
 	else:
 		pass
@@ -173,17 +174,20 @@ success = 0
 success_cases = []
 failure = 0
 failure_cases = []
+total_time = 0
 
 
 for i, env in enumerate(train_env):
 #for i, env in enumerate(test_env):
+	start = time.time()
 	state = env
 	observable_env = system1.observation_function(fullstate(state))
 	state.render()
 	state.render()
+	import ipdb; ipdb.set_trace()
 	input("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
 	skill_seq = []
-
+	sequence_length = 0
 	for _ in range(25): # Max skills
 		observable_env = system1.observation_function(fullstate(state))
 		skill_prob = net(torch.tensor(np.expand_dims(np.expand_dims(observable_env, 0), 0)).type(torch.float32), \
@@ -201,6 +205,7 @@ for i, env in enumerate(train_env):
 					done = True
 					for a in action_seq:
 						_, state = state.step(a)
+						sequence_length += 1
 					skill_seq.append(skill_prob.argmax().item() + 3)
 					break
 			except:
@@ -209,7 +214,8 @@ for i, env in enumerate(train_env):
 				
 		if state.inventory[10] > 0:
 			success += 1
-			success_cases.append(i)		
+			success_cases.append((i, sequence_length))
+			total_time += end - start
 			break
 
 	if state.inventory[10] == 0:
@@ -222,5 +228,10 @@ for i, env in enumerate(train_env):
 	print(skill_seq)
 	
 
-print("Success:{}, Failure:{}".format(success, failure))
+print("\n\n\n\n")
+for s in success_cases: print(s)
+if success > 0:
+	print("Avg. time taken: {}, Success:{}, Failure:{}".format(total_time/success, success, failure))
+else:
+	print("Success:{}, Failure:{}".format(success, failure))
 import ipdb; ipdb.set_trace()

@@ -1,4 +1,5 @@
-import time, pickle
+import os, time
+import pickle
 import numpy as np
 from system3 import *
 
@@ -26,7 +27,7 @@ system2 = System2()
 
 # Dict type
 
-dict_type = "demo_explore"
+dict_type = "oracle"
 
 if dict_type == "oracle":
 	system2.rule_dict = system2.rule_dict_oracle
@@ -74,8 +75,8 @@ failure_cases = []
 total_time = 0
 
 
-#for i, env in enumerate(train_env):
-for i, env in enumerate(test_env):
+for i, env in enumerate(train_env):
+#for i, env in enumerate(test_env):
 	start = time.time()
 	state = env
 	observable_env = system1.observation_function(fullstate(state))
