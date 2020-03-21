@@ -73,13 +73,19 @@ else:
 
 # Prepare dataset
 
-if os.path.exists("skill_clone_dataset.pk"):
-	x1, x2, y = pickle.load(open("skill_clone_dataset.pk", "rb"))
+if os.path.exists("skill_clone_dataset_train.pk") and os.path.exists("skill_clone_dataset_test.pk"):
+	x1_train, x2_train, y_train = pickle.load(open("skill_clone_dataset_train.pk", "rb"))
+	x1_test, x2_test, y_test = pickle.load(open("skill_clone_dataset_test.pk", "rb"))
 
 else:
-	x1 = np.zeros((0,1,12,12))
-	x2 = np.zeros((0,21))
-	y = []
+	x1_train = np.zeros((0,1,12,12))
+	x1_test = np.zeros((0,1,12,12))
+	
+	x2_train = np.zeros((0,21))
+	x2_test = np.zeros((0,21))
+	
+	y_train = []
+	y_test = []
 
 
 	demo_type_strings = ["1layer", "2layer", "3layer", "gem_gold", "grass_gold", "iron_gold", "stone_gold", "water_gold", "wood_gold"]
@@ -95,10 +101,16 @@ else:
 			inventory = np.zeros(21)
 			for index, skill in zip(segmentation_index, skill_sequence):
 				curr_state = system1.observation_function(demo_model[index])
-				x1 = np.append(x1, np.expand_dims(np.expand_dims(curr_state, 0), 0), axis=0)
-				x2 = np.append(x2, np.expand_dims(inventory.copy(), 0), axis=0)
-				# Minus 3 is to adjust the classification categories
-				y.append(skill['object_before'] - 3)
+				if i == 0:
+					x1_test = np.append(x1_test, np.expand_dims(np.expand_dims(curr_state, 0), 0), axis=0)
+					x2_test = np.append(x2_test, np.expand_dims(inventory.copy(), 0), axis=0)
+					# Minus 3 is to adjust the classification categories
+					y_test.append(skill['object_before'] - 3)
+				else:
+					x1_train = np.append(x1_train, np.expand_dims(np.expand_dims(curr_state, 0), 0), axis=0)
+					x2_train = np.append(x2_train, np.expand_dims(inventory.copy(), 0), axis=0)
+					# Minus 3 is to adjust the classification categories
+					y_train.append(skill['object_before'] - 3)
 				# Update inventory as per rule base
 				if rule_base_access:
 					rule_tr = system2.rule_dict_oracle[skill['object_before']][0]
@@ -109,7 +121,8 @@ else:
 				else:
 					pass
 	
-	pickle.dump((x1, x2, y), open("skill_clone_dataset.pk", "wb"))
+	pickle.dump((x1_train, x2_train, y_train), open("skill_clone_dataset_train.pk", "wb"))
+	pickle.dump((x1_test, x2_test, y_test), open("skill_clone_dataset_test.pk", "wb"))
 
 
 # Prepare model
@@ -131,10 +144,12 @@ else:
 	optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
 	# Train
+	losses_train = []
+	losses_test = []
 
 	for epoch in range(1):  
 
-	    running_loss = 0.0
+	    #running_loss = 0.0
 	    for i in range(5000): # loop over the dataset multiple times
 
 	        # zero the parameter gradients
@@ -146,24 +161,34 @@ else:
 	        # Jumble dataset !
 	        ##
 
-	        y_guess = net(torch.tensor(x1).type(torch.float32), torch.tensor(x2).type(torch.float32))
-	        loss = criterion(y_guess, torch.tensor(y).type(torch.LongTensor))
-	        loss.backward()
+	        y_guess_train = net(torch.tensor(x1_train).type(torch.float32), torch.tensor(x2_train).type(torch.float32))
+	        loss_train = criterion(y_guess_train, torch.tensor(y_train).type(torch.LongTensor))
+	        loss_train.backward()
 	        optimizer.step()
 
 	        # print statistics
-	        running_loss += loss.item()
+	        losses_train.append(loss_train.item())
+	        
+	        if i % 200 == 199:
+	        	y_guess_test = net(torch.tensor(x1_test).type(torch.float32), torch.tensor(x2_test).type(torch.float32))
+		        loss_test = criterion(y_guess_test, torch.tensor(y_test).type(torch.LongTensor))
+		        losses_test.append(loss_test.item())
+	        
 	        if i % 20 == 19:    # print every 2000 mini-batches
-	            print('[%d, %5d] loss: %.3f' %
-	                  (epoch + 1, i + 1, running_loss / 20))
-	            running_loss = 0.0
+	        	train_loss_avg = losses_train[-20:]
+	        	train_loss_avg = sum(train_loss_avg)/(len(train_loss_avg) + 1e-7)
+	        	test_loss_avg = losses_test[-20:]
+	        	test_loss_avg = sum(test_loss_avg)/(len(test_loss_avg) + 1e-7)
+	        	print('[%d, %5d] train loss: %.3f | test loss: %.3f' %
+	                  (epoch + 1, i + 1, train_loss_avg, test_loss_avg))
+	            #running_loss = 0.0
 	            #if np.isclose(running_loss, 0.0):
 	            #	break
 
 	print('Finished Training')
 	if save_model:
 		torch.save({'state_dict': net.state_dict(), 'optimizer' : optimizer.state_dict()}, \
-			'mytraining_2.pt')
+			'mytraining_3.pt')
 		print('Model Saved')
 	else:
 		pass
