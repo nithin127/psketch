@@ -1,4 +1,5 @@
-import os, pickle
+import os, time
+import pickle
 import numpy as np
 from system3 import *
 
@@ -72,14 +73,18 @@ else:
 
 # Prepare dataset
 
-if os.path.exists("action_clone_dataset.pk"):
-	x1, x2, y = pickle.load(open("action_clone_dataset.pk", "rb"))
+if os.path.exists("action_clone_dataset_train.pk") and os.path.exists("action_clone_dataset_test.pk"):
+	x1, x2, y = pickle.load(open("action_clone_dataset_train.pk", "rb"))
+	x1_test, x2_test, y_test = pickle.load(open("action_clone_dataset_test.pk", "rb"))
 
 else:
 	x1 = np.zeros((0,1,12,12))
 	x2 = np.zeros((0,21))
 	y = []
 
+	x1_test = np.zeros((0,1,12,12))
+	x2_test = np.zeros((0,21))
+	y_test = []
 
 	demo_type_strings = ["1layer", "2layer", "3layer", "gem_gold", "grass_gold", "iron_gold", "stone_gold", "water_gold", "wood_gold"]
 	for demo_string in demo_type_strings:
@@ -92,9 +97,14 @@ else:
 			
 			for state in demo[1:]:
 				state = system1.observation_function(fullstate(state))
-				x1 = np.append(x1, np.expand_dims(np.expand_dims(state, 0), 0), axis=0)
-				x2 = np.append(x2, np.expand_dims(inventory.copy(), 0), axis=0)
-				
+
+				if i == 0:
+					x1_test = np.append(x1_test, np.expand_dims(np.expand_dims(state, 0), 0), axis=0)
+					x2_test = np.append(x2_test, np.expand_dims(inventory.copy(), 0), axis=0)
+				else:
+					x1 = np.append(x1, np.expand_dims(np.expand_dims(state, 0), 0), axis=0)
+					x2 = np.append(x2, np.expand_dims(inventory.copy(), 0), axis=0)
+
 				px, py = np.where(prev_state == 1)
 				cx, cy = np.where(state == 1)
 				if cy - py == 1:
@@ -118,11 +128,14 @@ else:
 							# Also update the estimated inventory
 							if rule_base_access:
 								object_in_front = state[cdx, cdy] + 0.5
-								rule_tr = system2.rule_dict_oracle[object_in_front][0]
-								rule_pre = system2.rule_dict_oracle[object_in_front][1]
-								for tr, pre in zip(rule_tr, rule_pre):
-									if (inventory - pre >= 0).all():
-										inventory += tr[:-1]
+								try:
+									rule_tr = system2.rule_dict_oracle[object_in_front[0]][0]
+									rule_pre = system2.rule_dict_oracle[object_in_front[0]][1]
+									for tr, pre in zip(rule_tr, rule_pre):
+										if (inventory - pre >= 0).all():
+											inventory += tr[:-1]
+								except:
+									pass
 						else:
 							# Here we go again
 							if cdy - cy == 1:
@@ -138,10 +151,14 @@ else:
 								elif cdx - cx == -1:
 									assert cdy == cy
 									y.append(2)
+				if i == 0:
+					y_test.append(y.pop(-1))
 				# Now that we have the direction
 				prev_state = state
+			#import ipdb; ipdb.set_trace
 
-	pickle.dump((x1, x2, y), open("action_clone_dataset.pk", "wb"))
+	pickle.dump((x1, x2, y), open("action_clone_dataset_train.pk", "wb"))
+	pickle.dump((x1_test, x2_test, y_test), open("action_clone_dataset_test.pk", "wb"))
 
 
 # Prepare model
@@ -153,9 +170,9 @@ load_model = True
 save_model = True
 
 
-if load_model and os.path.exists('mytraining.pt'):
+if load_model and os.path.exists('mytraining_action.pt'):
 	print("Loading Model")
-	checkpoint = torch.load('mytraining.pt')
+	checkpoint = torch.load('mytraining_action.pt')
 	net.load_state_dict(checkpoint['state_dict'])
 else:
 	## L2 loss
@@ -163,34 +180,49 @@ else:
 	optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
 	# Train
+	losses_train = []
+	losses_test = []
 
 	for epoch in range(1):  
 
-	    running_loss = 0.0
 	    for i in range(5000): # loop over the dataset multiple times
 	        
 	        # zero the parameter gradients
 	        optimizer.zero_grad()
+	        #import ipdb; ipdb.set_trace()
 
 	        # forward + backward + optimize
-	        y_guess = net(torch.tensor(x1).type(torch.float32), torch.tensor(x2).type(torch.float32))
-	        loss = criterion(y_guess, torch.tensor(y).type(torch.LongTensor))
-	        loss.backward()
-	        optimizer.step()
+	        try:
+	        	y_guess = net(torch.tensor(x1).type(torch.float32), torch.tensor(x2).type(torch.float32))
+	        	loss = criterion(y_guess, torch.tensor(y).type(torch.LongTensor))
+	        	loss.backward()
+	        	optimizer.step()
+	        	losses_train.append(loss.item())
+	        except:
+	        	import ipdb; ipdb.set_trace()
 
 	        # print statistics
-	        running_loss += loss.item()
+	        if i % 200 == 199:
+	        	try:
+	        		y_guess_test = net(torch.tensor(x1_test).type(torch.float32), torch.tensor(x2_test).type(torch.float32))
+	        		loss_test = criterion(y_guess_test, torch.tensor(y_test).type(torch.LongTensor))
+	        		losses_test.append(loss_test.item())
+	        	except:
+	        		pass # Chill
 	        if i % 20 == 19:    # print every 2000 mini-batches
-	            print('[%d, %5d] loss: %.3f' %
-	                  (epoch + 1, i + 1, running_loss / 20))
-	            running_loss = 0.0
+	        	train_loss_avg = losses_train[-20:]
+	        	train_loss_avg = sum(train_loss_avg)/(len(train_loss_avg) + 1e-7)
+	        	test_loss_avg = losses_test[-20:]
+	        	test_loss_avg = sum(test_loss_avg)/(len(test_loss_avg) + 1e-7)
+	        	print('[%d, %5d] train loss: %.3f | test loss: %.3f' %
+	                  (epoch + 1, i + 1, train_loss_avg, test_loss_avg))
 	            #if np.isclose(running_loss, 0.0):
 	            #	break
 
 	print('Finished Training')
 	if save_model:
 		torch.save({'state_dict': net.state_dict(), 'optimizer' : optimizer.state_dict()}, \
-			'mytraining.pt')
+			'mytraining_action.pt')
 		print('Model Saved')
 	else:
 		pass
@@ -201,15 +233,17 @@ success = 0
 success_cases = []
 failure = 0
 failure_cases = []
+total_time = 0
 
 
 for i, env in enumerate(train_env):
 #for i, env in enumerate(test_env):
+	start = time.time()
 	state = env
 	observable_env = system1.observation_function(fullstate(state))
 	state.render()
 	state.render()
-	input("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
+	print("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
 	action_seq = []
 
 	for _ in range(125): # Max skills
@@ -220,11 +254,17 @@ for i, env in enumerate(train_env):
 		action_seq.append(action_prob.argmax().item())
 
 		if state.inventory[10] > 0:
+			end = time.time()
 			success += 1
-			success_cases.append(i)
+			success_cases.append((i, len(action_seq)))
+			total_time += end - start
+			break
 		else:
-			failure += 1
-			failure_cases.append(i)
+			pass
+	
+	if state.inventory[10] == 0:
+		failure += 1
+		failure_cases.append(i)
 	
 	state.render()
 	state.render()
@@ -232,5 +272,10 @@ for i, env in enumerate(train_env):
 	print(action_seq)
 	
 
-print("Success:{}, Failure:{}".format(success, failure))
+print("\n\n\n\n")
+for s in success_cases: print(s)
+if success > 0:
+	print("Avg. time taken: {}, Success:{}, Failure:{}".format(total_time/success, success, failure))
+else:
+	print("Success:{}, Failure:{}".format(success, failure))
 import ipdb; ipdb.set_trace()

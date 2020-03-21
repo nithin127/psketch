@@ -130,13 +130,13 @@ net = Net()
 net = net.float()
 
 
-load_model = False
+load_model = True
 save_model = True
 
 
-if load_model and os.path.exists('mytraining.pt'):
+if load_model and os.path.exists('mytraining_1.pt'):
 	print("Loading Model")
-	checkpoint = torch.load('mytraining.pt')
+	checkpoint = torch.load('mytraining_1.pt')
 	net.load_state_dict(checkpoint['state_dict'])
 else:
 	## L2 loss
@@ -194,7 +194,7 @@ else:
 		pass
 
 
-		
+
 success = 0
 success_cases = []
 failure = 0
@@ -202,15 +202,15 @@ failure_cases = []
 total_time = 0
 
 
-for i, env in enumerate(train_env):
-#for i, env in enumerate(test_env):
+#for i, env in enumerate(train_env):
+for i, env in enumerate(test_env):
 	start = time.time()
 	state = env
 	observable_env = system1.observation_function(fullstate(state))
 	state.render()
 	state.render()
-	import ipdb; ipdb.set_trace()
-	input("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
+	#import ipdb; ipdb.set_trace()
+	print("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
 	skill_seq = []
 	sequence_length = 0
 	for _ in range(25): # Max skills
@@ -238,6 +238,7 @@ for i, env in enumerate(train_env):
 				pass
 				
 		if state.inventory[10] > 0:
+			end = time.time()
 			success += 1
 			success_cases.append((i, sequence_length))
 			total_time += end - start
