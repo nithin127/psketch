@@ -1,6 +1,6 @@
-import math
 import random
 import os, pickle
+import math, time
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -106,7 +106,7 @@ memory = ReplayMemory(10000)
 
 steps_done = 0
 
-load_prev_model = True
+load_prev_model = False
 
 if os.path.exists("mytraining_RL_1.pt") and load_prev_model:
     checkpoint = torch.load('mytraining_RL_1.pt')
@@ -188,21 +188,24 @@ for demo_string in demo_type_strings:
 
 system1 = System1()
 
-
+train_model = False
 num_episodes = 50
 for i_episode in range(num_episodes):
+    if not train_model:
+        break
     # Initialize the environment and state
     print("Episode: ", i_episode)
     actual_state = np.random.choice(demos[np.random.choice(demo_type_strings)]['1layer'])[0]
     
-    current_screen = system1.observation_function(fullstate(actual_state))
-    current_screen = torch.tensor(np.expand_dims(np.expand_dims(current_screen, 0), 0)).type(torch.float32)
-    last_screen = system1.observation_function(fullstate(actual_state))
-    last_screen = torch.tensor(np.expand_dims(np.expand_dims(last_screen, 0), 0)).type(torch.float32)
+
+    current_screen = torch.tensor(system1.observation_function(fullstate(actual_state)))\
+                .unsqueeze(0).unsqueeze(0).type(torch.float32)
+    last_screen = torch.tensor(system1.observation_function(fullstate(actual_state)))\
+                .unsqueeze(0).unsqueeze(0).type(torch.float32)
 
     state = current_screen - last_screen
 
-
+    running_reward = 0.0
     for t in count():
         # Select and perform an action
         action = select_action(state)
@@ -211,24 +214,35 @@ for i_episode in range(num_episodes):
         skill_seq = []
         possible_objects = np.where(current_screen[0][0] == action.item() + 3)
         for skill_param_x, skill_param_y in zip(possible_objects[0], possible_objects[1]):
-            pos_x, pos_y = np.where(current_screen[0][0] == 1)
-            #import ipdb; ipdb.set_trace()
+            if len(current_screen.shape) == 2:
+                current_screen = torch.tensor(current_screen).unsqueeze(0).unsqueeze(0).type(torch.float32)
+            if len(last_screen.shape) == 2:
+                last_screen = torch.tensor(last_screen).unsqueeze(0).unsqueeze(0).type(torch.float32)
+            try:
+                pos_x, pos_y = np.where(current_screen[0][0] == 1)
+            except:
+                import ipdb; ipdb.set_trace()
             if done_skill:
                 break
             try:
                 action_seq = system1.use_object(current_screen[0][0], (pos_x[0], pos_y[0]), (skill_param_x, skill_param_y))
                 if len(action_seq) > 0 and action_seq[-1] == 4:
                     done_skill = True
-                    print(action_seq)
+                    #print(action_seq)
                     for a in action_seq:
                         _, actual_state = actual_state.step(a)
                     current_screen = system1.observation_function(fullstate(actual_state))
-                    skill_seq.append(skill_prob.argmax().item() + 3)
+                    skill_seq.append(action.item() + 3)
                     break
             except:
                 #print("Skill_params: {} failed".format((skill_param_x, skill_param_y)))
                 pass
 
+
+        # Observe new state
+        last_screen = current_screen
+        current_screen = torch.tensor(system1.observation_function(fullstate(actual_state)))\
+                .unsqueeze(0).unsqueeze(0).type(torch.float32)
 
         reward = 1 if actual_state.inventory[10] > 0 else 0
         if reward == 1:
@@ -236,13 +250,16 @@ for i_episode in range(num_episodes):
         else:
             done = False
 
-        # Observe new state
-        last_screen = current_screen
-        current_screen = system1.observation_function(fullstate(actual_state))
-        current_screen = torch.tensor(np.expand_dims(np.expand_dims(current_screen, 0), 0)).type(torch.float32)
-
+        
         if not done:
-            next_state = current_screen - last_screen
+            if len(current_screen.shape) == 2:
+                current_screen = torch.tensor(current_screen).unsqueeze(0).unsqueeze(0).type(torch.float32)
+            if len(last_screen.shape) == 2:
+                last_screen = torch.tensor(last_screen).unsqueeze(0).unsqueeze(0).type(torch.float32)
+            try:
+                next_state = current_screen - last_screen
+            except:
+                import ipdb; ipdb.set_trace()
         else:
             next_state = None
 
@@ -251,6 +268,11 @@ for i_episode in range(num_episodes):
 
         # Move to the next state
         state = next_state
+
+        running_reward += reward
+        if t % 50 == 49:
+            print("Episode: {}; Count:{}; Running reward: {}".format(i_episode, t, running_reward/50))
+            running_reward = 0.0
 
         # Perform one step of the optimization (on the target network)
         optimize_model()
@@ -263,9 +285,92 @@ for i_episode in range(num_episodes):
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
         torch.save({'state_dict': policy_net.state_dict(), 'optimizer' : optimizer.state_dict()}, \
-            'mytraining_RL_1.pt')
+            'mytraining_RL_2.pt')
         
+if train_model:
+    print('Complete')
+    actual_state.render()
 
-print('Complete')
-actual_state.render()
 
+
+
+#Testing
+test_env = pickle.load(open("maps__test.pk", "rb"))
+train_env = pickle.load(open("maps__train.pk", "rb"))
+
+
+success = 0
+success_cases = []
+failure = 0
+failure_cases = []
+total_time = 0
+
+
+for i, env in enumerate(train_env):
+#for i, env in enumerate(test_env):
+    start = time.time()
+    state = env
+    observable_env = system1.observation_function(fullstate(state))
+    state.render()
+    state.render()
+    #import ipdb; ipdb.set_trace()
+    print("\n\n\n\nEnvironment number: {}\n\n\n\n\n".format(i))
+    skill_seq = []
+    sequence_length = 0
+
+    current_screen = torch.tensor(observable_env).unsqueeze(0).unsqueeze(0).type(torch.float32)
+    last_screen = torch.tensor(observable_env).unsqueeze(0).unsqueeze(0).type(torch.float32)
+    
+    state_diff = current_screen - last_screen
+
+    for _ in range(25): # Max skills
+        action = select_action(state_diff)
+
+        observable_env = system1.observation_function(fullstate(state))
+        last_screen = current_screen
+        current_screen = torch.tensor(observable_env).unsqueeze(0).unsqueeze(0).type(torch.float32)
+        state_diff = current_screen - last_screen
+
+        done = False
+        possible_objects = np.where(observable_env == action.item() + 3)
+        for skill_param_x, skill_param_y in zip(possible_objects[0], possible_objects[1]):
+            pos_x, pos_y = np.where(observable_env == 1)
+            if done:
+                break
+            try:
+                action_seq = system1.use_object(observable_env, (pos_x[0], pos_y[0]), (skill_param_x, skill_param_y))
+                if len(action_seq) > 0 and action_seq[-1] == 4:
+                    done = True
+                    for a in action_seq:
+                        _, state = state.step(a)
+                        sequence_length += 1
+                    skill_seq.append(action.item() + 3)
+                    break
+            except:
+                print("Skill_params: {} failed".format((skill_param_x, skill_param_y)))
+                pass
+                
+        if state.inventory[10] > 0:
+            end = time.time()
+            success += 1
+            success_cases.append((i, sequence_length))
+            total_time += end - start
+            break
+
+    if state.inventory[10] == 0:
+        failure += 1
+        failure_cases.append(i)
+    
+    state.render()
+    state.render()
+    print("\n\n\n\n\n")
+    print(skill_seq)
+    
+
+print("\n\n\n\n")
+for s in success_cases: print(s)
+if success > 0:
+    print("Avg. time taken: {}, Success:{}, Failure:{}".format(total_time/success, success, failure))
+else:
+    print("Success:{}, Failure:{}".format(success, failure))
+import ipdb; ipdb.set_trace()
