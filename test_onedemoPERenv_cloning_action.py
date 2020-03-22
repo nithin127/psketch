@@ -236,8 +236,8 @@ failure_cases = []
 total_time = 0
 
 
-for i, env in enumerate(train_env):
-#for i, env in enumerate(test_env):
+#for i, env in enumerate(train_env):
+for i, env in enumerate(test_env):
 	start = time.time()
 	state = env
 	observable_env = system1.observation_function(fullstate(state))

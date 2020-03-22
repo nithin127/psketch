@@ -1,5 +1,6 @@
 import math
 import random
+import os, pickle
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
@@ -103,8 +104,15 @@ target_net.eval()
 optimizer = optim.RMSprop(policy_net.parameters())
 memory = ReplayMemory(10000)
 
-
 steps_done = 0
+
+load_prev_model = True
+
+if os.path.exists("mytraining_RL_1.pt") and load_prev_model:
+    checkpoint = torch.load('mytraining_RL_1.pt')
+    policy_net.load_state_dict(checkpoint['state_dict'])
+    target_net.load_state_dict(checkpoint['state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
 
 
 def select_action(state):
@@ -204,10 +212,11 @@ for i_episode in range(num_episodes):
         possible_objects = np.where(current_screen[0][0] == action.item() + 3)
         for skill_param_x, skill_param_y in zip(possible_objects[0], possible_objects[1]):
             pos_x, pos_y = np.where(current_screen[0][0] == 1)
+            #import ipdb; ipdb.set_trace()
             if done_skill:
                 break
             try:
-                action_seq = system1.use_object(current_screen, (pos_x[0], pos_y[0]), (skill_param_x, skill_param_y))
+                action_seq = system1.use_object(current_screen[0][0], (pos_x[0], pos_y[0]), (skill_param_x, skill_param_y))
                 if len(action_seq) > 0 and action_seq[-1] == 4:
                     done_skill = True
                     print(action_seq)
@@ -253,6 +262,9 @@ for i_episode in range(num_episodes):
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
+        torch.save({'state_dict': policy_net.state_dict(), 'optimizer' : optimizer.state_dict()}, \
+            'mytraining_RL_1.pt')
+        
 
 print('Complete')
 actual_state.render()
